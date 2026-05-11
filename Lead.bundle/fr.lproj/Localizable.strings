@@ -84,6 +84,11 @@
 "ANTI_SCREENSHOT_TITLE" = "Masquer la notif. capture";
 "ANTI_SCREENSHOT_SUBTITLE" = "Empêche l'envoi de notification lors de captures dans les chats secrets et chaînes protégées.";
 
+"ANTI_SELF_DESTRUCT_TITLE" = "Voir les médias éphémères librement";
+"ANTI_SELF_DESTRUCT_SUBTITLE" = "Ouvrir les photos/vidéos éphémères sans déclencher le minuteur d'autodestruction.";
+"ANTI_AUTO_DELETE_TITLE" = "Sauvegarder les messages à suppression automatique";
+"ANTI_AUTO_DELETE_SUBTITLE" = "Empêche la suppression des messages dans les chats avec suppression automatique (1 jour, 7 jours, etc.).";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Corriger le Sélecteur de Fichiers";
 "FIX_FILE_PICKER_SUBTITLE" = "Corrige le problème empêchant la sélection de fichiers depuis l’app Fichiers sur les versions installées manuellement";

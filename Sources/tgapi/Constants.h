@@ -5,12 +5,11 @@
 #define kMessagesSetTypingAction 1486110434
 #define kMessagesReadHistory 238054714
 #define kStoriesReadStories -1521034552
-#define kGetSponsoredMessages 1030547536
+#define kGetSponsoredMessages -1680673735
 #define kSendScreenshotNotification -1589618665
 // messages.readMessageContents#36a73f77 — sent when TTL/disappearing media is
 // opened
 #define kMessagesReadMessageContents 917472119
-#define kGzipPackedCtor ((int32_t)0x3072CFA1)
 
 #define kActionIDTyping 381645902           // .sendMessageTypingAction
 #define kActionIDRecordingVideo -1584933265 // .sendMessageRecordVideoAction
@@ -59,18 +58,16 @@
 // FIX: was incorrectly mapped to "disableOnlineStatus" — now has its own key
 #define kDisableAllAds @"disableAllAds"
 #define kDisableForwardRestriction @"disableForwardRestriction"
-#define kHideStories @"LeadHideStories"
-#define kDownloadStories @"LeadDownloadStories"
 
 // Anti-features
 #define kAntiRevoke @"LeadAntiRevoke"
 #define kAntiEdit @"LeadAntiEdit"
 // Key for preventing disappearing/self-destruct media from being marked as read
 #define kAntiSelfDestruct @"LeadAntiSelfDestruct"
-// Key for preventing chat-level auto-delete (ttlPeriod) messages from being
-// deleted
 #define kAntiAutoDelete @"LeadAntiAutoDelete"
 #define kConfirmCalls @"LeadConfirmCalls"
+#define kHideStories @"LeadHideStories"
+#define kDownloadStories @"LeadDownloadStories"
 
 #define FAKE_LOCATION_ENABLED_KEY @"LeadFakeLocation"
 #define FAKE_LATITUDE_KEY @"LeadSavedLatitude"

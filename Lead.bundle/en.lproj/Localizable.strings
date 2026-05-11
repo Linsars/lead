@@ -89,6 +89,9 @@
 "ANTI_SELF_DESTRUCT_TITLE" = "View Disappearing Media Freely";
 "ANTI_SELF_DESTRUCT_SUBTITLE" = "Open one-time and disappearing photos/videos without triggering the self-destruct timer. The media stays visible locally.";
 
+"ANTI_AUTO_DELETE_TITLE" = "Save Auto-Delete Messages";
+"ANTI_AUTO_DELETE_SUBTITLE" = "Prevent messages in chats with auto-delete (1 day, 7 days, etc.) from being deleted. Messages stay visible even after the timer expires.";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Fix File Picker";
 "FIX_FILE_PICKER_SUBTITLE" = "Fixes the issue where you can't pick files from the Files app on sideloaded versions.";

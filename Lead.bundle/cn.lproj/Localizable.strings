@@ -83,6 +83,11 @@
 "ANTI_SCREENSHOT_TITLE" = "隐藏截屏通知";
 "ANTI_SCREENSHOT_SUBTITLE" = "在私密聊天和受保护频道中截图时不发送通知。";
 
+"ANTI_SELF_DESTRUCT_TITLE" = "自由查看消失的媒体";
+"ANTI_SELF_DESTRUCT_SUBTITLE" = "打开一次性消失的照片/视频而不触发自毁计时器。";
+"ANTI_AUTO_DELETE_TITLE" = "保存自动删除消息";
+"ANTI_AUTO_DELETE_SUBTITLE" = "防止在启用自动删除（1天、7天等）的聊天中消息被删除。";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "修复文件选择器";
 "FIX_FILE_PICKER_SUBTITLE" = "修复在侧载版本中无法从文件应用选择文件的问题";

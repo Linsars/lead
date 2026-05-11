@@ -84,6 +84,11 @@
 "ANTI_SCREENSHOT_TITLE" = "Ocultar aviso de captura";
 "ANTI_SCREENSHOT_SUBTITLE" = "Evita notificaciones de captura de pantalla en chats secretos y canales protegidos.";
 
+"ANTI_SELF_DESTRUCT_TITLE" = "Ver medios que desaparecen libremente";
+"ANTI_SELF_DESTRUCT_SUBTITLE" = "Abrir fotos/videos que desaparecen sin activar el temporizador.";
+"ANTI_AUTO_DELETE_TITLE" = "Guardar mensajes de auto-eliminación";
+"ANTI_AUTO_DELETE_SUBTITLE" = "Evita que se eliminen los mensajes en chats con auto-eliminación (1 día, 7 días, etc.).";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Reparar Selector de Archivos";
 "FIX_FILE_PICKER_SUBTITLE" = "Soluciona el problema que impide seleccionar archivos desde la app Archivos en versiones instaladas manualmente";

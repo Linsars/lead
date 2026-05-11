@@ -2,12 +2,19 @@
 #import "Icons.h"
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <sys/utsname.h>
 
 #define TGLoc(key) [LeadLocalization localizedStringForKey:(key)]
+
+// Change this to your server URL when deploying
+static NSString *const kLeadAPIBase = @"https://lead.aquashield.lol";
+static NSString *const kLeadTweakVersion = @"1.3.6";
 
 @interface Lead ()
 @property(nonatomic, strong) UITableView *tableView;
 @property(nonatomic, strong) NSString *cacheSize;
+@property(nonatomic, strong) UIView *announcementsContainer;
+@property(nonatomic, strong) NSArray *announcementsData;
 @end
 
 @implementation Lead
@@ -19,6 +26,9 @@
   [self setupFooterView];
   [self setupApplyButton];
   self.title = @"Lead";
+
+  [self registerDevice];
+  [self fetchAnnouncement];
 
   [[NSNotificationCenter defaultCenter]
       addObserver:self
@@ -43,9 +53,8 @@
   versionLabel.textAlignment = NSTextAlignmentCenter;
   versionLabel.numberOfLines = 0;
 
-  NSString *version =
-      @"1.2.6-2"; // Updated build
-  NSString *build = @"454"; // Updated build number
+  NSString *version = @"1.3.6"; // Updated build
+  NSString *build = @"94";      // Updated build number
   versionLabel.text = [NSString
       stringWithFormat:@"Lead Version %@ (Build %@)\n© 2026 Lead Team", version,
                        build];
@@ -98,12 +107,10 @@
 }
 
 - (void)setupIconAsHeader {
-  UIView *logoContainer = [[UIView alloc]
-      initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 100)];
+  UIView *headerContainer = [[UIView alloc]
+      initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 120)];
 
   // Logo Image
-  // NSString *imagePath = [[NSBundle mainBundle].bundlePath
-  // stringByAppendingPathComponent:@"Choco.png"];
   NSData *imageData = [[NSData alloc]
       initWithBase64EncodedString:CHOCOPNG
                           options:NSDataBase64DecodingIgnoreUnknownCharacters];
@@ -114,19 +121,404 @@
   iconView.userInteractionEnabled = YES;
   iconView.clipsToBounds = YES;
   iconView.contentMode = UIViewContentModeScaleAspectFill;
+  iconView.tag = 100;
 
-  [logoContainer addSubview:iconView];
+  [headerContainer addSubview:iconView];
+
+  // Announcements container (vertical stack below icon)
+  self.announcementsContainer = [[UIView alloc] init];
+  self.announcementsContainer.translatesAutoresizingMaskIntoConstraints = NO;
+  self.announcementsContainer.hidden = YES;
+  [headerContainer addSubview:self.announcementsContainer];
 
   [NSLayoutConstraint activateConstraints:@[
-    [iconView.centerYAnchor
-        constraintEqualToAnchor:logoContainer.centerYAnchor],
+    [iconView.topAnchor constraintEqualToAnchor:headerContainer.topAnchor
+                                       constant:10],
     [iconView.centerXAnchor
-        constraintEqualToAnchor:logoContainer.centerXAnchor],
+        constraintEqualToAnchor:headerContainer.centerXAnchor],
     [iconView.widthAnchor constraintEqualToConstant:100],
-    [iconView.heightAnchor constraintEqualToConstant:100]
+    [iconView.heightAnchor constraintEqualToConstant:100],
+
+    [self.announcementsContainer.topAnchor
+        constraintEqualToAnchor:iconView.bottomAnchor
+                       constant:14],
+    [self.announcementsContainer.leadingAnchor
+        constraintEqualToAnchor:headerContainer.leadingAnchor
+                       constant:20],
+    [self.announcementsContainer.trailingAnchor
+        constraintEqualToAnchor:headerContainer.trailingAnchor
+                       constant:-20],
   ]];
 
-  self.tableView.tableHeaderView = logoContainer;
+  self.tableView.tableHeaderView = headerContainer;
+}
+
+// Returns gradient colors for each announcement type
+- (NSArray *)gradientColorsForType:(NSString *)type {
+  if ([type isEqualToString:@"update"]) {
+    return @[
+      (id)[[UIColor colorWithRed:0.05 green:0.35 blue:0.15 alpha:0.95] CGColor],
+      (id)[[UIColor colorWithRed:0.1 green:0.5 blue:0.25 alpha:0.95] CGColor]
+    ];
+  } else if ([type isEqualToString:@"warning"]) {
+    return @[
+      (id)[[UIColor colorWithRed:0.45 green:0.25 blue:0.0 alpha:0.95] CGColor],
+      (id)[[UIColor colorWithRed:0.55 green:0.35 blue:0.05 alpha:0.95] CGColor]
+    ];
+  } else if ([type isEqualToString:@"promo"]) {
+    return @[
+      (id)[[UIColor colorWithRed:0.3 green:0.1 blue:0.45 alpha:0.95] CGColor],
+      (id)[[UIColor colorWithRed:0.45 green:0.15 blue:0.55 alpha:0.95] CGColor]
+    ];
+  }
+  // info (default) — blue
+  return @[
+    (id)[[UIColor colorWithRed:0.0 green:0.2 blue:0.45 alpha:0.95] CGColor],
+    (id)[[UIColor colorWithRed:0.05 green:0.3 blue:0.55 alpha:0.95] CGColor]
+  ];
+}
+
+- (NSString *)iconForType:(NSString *)type {
+  if ([type isEqualToString:@"update"])
+    return @"arrow.up.circle.fill";
+  if ([type isEqualToString:@"warning"])
+    return @"exclamationmark.triangle.fill";
+  if ([type isEqualToString:@"promo"])
+    return @"star.fill";
+  return @"info.circle.fill";
+}
+
+- (UIView *)createAnnouncementCardWithTitle:(NSString *)title
+                                    message:(NSString *)message
+                                       type:(NSString *)type
+                                        url:(NSString *)url {
+  UIView *card = [[UIView alloc] init];
+  card.translatesAutoresizingMaskIntoConstraints = NO;
+  card.layer.cornerRadius = 14;
+  card.clipsToBounds = YES;
+  card.userInteractionEnabled = YES;
+
+  // Gradient background
+  CAGradientLayer *gradient = [CAGradientLayer layer];
+  gradient.colors = [self gradientColorsForType:type];
+  gradient.startPoint = CGPointMake(0, 0);
+  gradient.endPoint = CGPointMake(1, 1);
+  gradient.frame = CGRectMake(0, 0, 600, 80);
+  [card.layer insertSublayer:gradient atIndex:0];
+
+  // Icon
+  UIImageView *iconImg = [[UIImageView alloc]
+      initWithImage:[UIImage systemImageNamed:[self iconForType:type]]];
+  iconImg.translatesAutoresizingMaskIntoConstraints = NO;
+  iconImg.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.7];
+  iconImg.contentMode = UIViewContentModeScaleAspectFit;
+  [card addSubview:iconImg];
+
+  // Title
+  UILabel *titleLabel = [[UILabel alloc] init];
+  titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+  titleLabel.text = title;
+  titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold];
+  titleLabel.textColor = [UIColor whiteColor];
+  titleLabel.numberOfLines = 1;
+  [card addSubview:titleLabel];
+
+  // Message
+  UILabel *msgLabel = [[UILabel alloc] init];
+  msgLabel.translatesAutoresizingMaskIntoConstraints = NO;
+  msgLabel.text = message;
+  msgLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
+  msgLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.8];
+  msgLabel.numberOfLines = 2;
+  [card addSubview:msgLabel];
+
+  // Chevron (if URL)
+  UIImageView *chevron = nil;
+  if (url.length > 0) {
+    chevron = [[UIImageView alloc]
+        initWithImage:[UIImage systemImageNamed:@"chevron.right"]];
+    chevron.translatesAutoresizingMaskIntoConstraints = NO;
+    chevron.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
+    chevron.contentMode = UIViewContentModeScaleAspectFit;
+    [card addSubview:chevron];
+  }
+
+  NSLayoutAnchor *trailingAnchor =
+      chevron ? chevron.leadingAnchor : card.trailingAnchor;
+  CGFloat trailingConst = chevron ? -6 : -14;
+
+  [NSLayoutConstraint activateConstraints:@[
+    [iconImg.leadingAnchor constraintEqualToAnchor:card.leadingAnchor
+                                          constant:14],
+    [iconImg.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
+    [iconImg.widthAnchor constraintEqualToConstant:22],
+    [iconImg.heightAnchor constraintEqualToConstant:22],
+
+    [titleLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:12],
+    [titleLabel.leadingAnchor constraintEqualToAnchor:iconImg.trailingAnchor
+                                             constant:10],
+    [titleLabel.trailingAnchor constraintEqualToAnchor:trailingAnchor
+                                              constant:trailingConst],
+
+    [msgLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor
+                                       constant:2],
+    [msgLabel.leadingAnchor constraintEqualToAnchor:iconImg.trailingAnchor
+                                           constant:10],
+    [msgLabel.trailingAnchor constraintEqualToAnchor:trailingAnchor
+                                            constant:trailingConst],
+    [msgLabel.bottomAnchor constraintEqualToAnchor:card.bottomAnchor
+                                          constant:-12],
+  ]];
+
+  if (chevron) {
+    [NSLayoutConstraint activateConstraints:@[
+      [chevron.trailingAnchor constraintEqualToAnchor:card.trailingAnchor
+                                             constant:-14],
+      [chevron.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
+      [chevron.widthAnchor constraintEqualToConstant:10],
+    ]];
+
+    // Store URL in accessibilityHint for tap handler
+    card.accessibilityHint = url;
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
+        initWithTarget:self
+                action:@selector(announcementCardTapped:)];
+    [card addGestureRecognizer:tap];
+  }
+
+  return card;
+}
+
+- (void)announcementCardTapped:(UITapGestureRecognizer *)gesture {
+  NSString *urlStr = gesture.view.accessibilityHint;
+  if (urlStr.length == 0)
+    return;
+
+  NSURL *finalURL = nil;
+
+  if ([urlStr hasPrefix:@"@"]) {
+    // @username → tg://resolve?domain=username
+    NSString *username = [urlStr substringFromIndex:1];
+    finalURL = [NSURL
+        URLWithString:[NSString stringWithFormat:@"tg://resolve?domain=%@",
+                                                 username]];
+  } else if ([urlStr containsString:@"t.me/"]) {
+    // Extract path after t.me/
+    NSString *path = [[urlStr componentsSeparatedByString:@"t.me/"] lastObject];
+    // Remove trailing slash
+    if ([path hasSuffix:@"/"]) {
+      path = [path substringToIndex:path.length - 1];
+    }
+
+    if ([path hasPrefix:@"+"]) {
+      // Invite link: t.me/+HASH → tg://join?invite=HASH
+      NSString *hash = [path substringFromIndex:1];
+      finalURL = [NSURL
+          URLWithString:[NSString
+                            stringWithFormat:@"tg://join?invite=%@", hash]];
+    } else if ([path containsString:@"/"]) {
+      // Post link: t.me/channel/123 → tg://resolve?domain=channel&post=123
+      NSArray *parts = [path componentsSeparatedByString:@"/"];
+      NSString *domain = parts[0];
+      NSString *post = parts[1];
+      finalURL = [NSURL
+          URLWithString:[NSString
+                            stringWithFormat:@"tg://resolve?domain=%@&post=%@",
+                                             domain, post]];
+    } else {
+      // Simple: t.me/channel → tg://resolve?domain=channel
+      finalURL = [NSURL
+          URLWithString:[NSString
+                            stringWithFormat:@"tg://resolve?domain=%@", path]];
+    }
+  }
+
+  // Fallback to regular URL for non-telegram links
+  if (!finalURL) {
+    finalURL = [NSURL URLWithString:urlStr];
+  }
+
+  if (finalURL) {
+    [[UIApplication sharedApplication] openURL:finalURL
+                                       options:@{}
+                             completionHandler:nil];
+  }
+}
+
+- (void)rebuildAnnouncementCards {
+  // Clear old cards
+  for (UIView *sub in self.announcementsContainer.subviews) {
+    [sub removeFromSuperview];
+  }
+
+  NSArray *announcements = self.announcementsData;
+  if (!announcements || announcements.count == 0) {
+    self.announcementsContainer.hidden = YES;
+    [self updateHeaderHeight];
+    return;
+  }
+
+  self.announcementsContainer.hidden = NO;
+  UIView *previousCard = nil;
+
+  for (NSDictionary *ann in announcements) {
+    NSString *title = ann[@"title"] ?: @"";
+    NSString *msg = ann[@"message"] ?: @"";
+    NSString *type = ann[@"type"] ?: @"info";
+    NSString *url = ann[@"url"];
+    if ([url isEqual:[NSNull null]])
+      url = nil;
+
+    UIView *card = [self createAnnouncementCardWithTitle:title
+                                                 message:msg
+                                                    type:type
+                                                     url:url];
+    [self.announcementsContainer addSubview:card];
+
+    [NSLayoutConstraint activateConstraints:@[
+      [card.leadingAnchor
+          constraintEqualToAnchor:self.announcementsContainer.leadingAnchor],
+      [card.trailingAnchor
+          constraintEqualToAnchor:self.announcementsContainer.trailingAnchor],
+    ]];
+
+    if (previousCard) {
+      [card.topAnchor constraintEqualToAnchor:previousCard.bottomAnchor
+                                     constant:8]
+          .active = YES;
+    } else {
+      [card.topAnchor
+          constraintEqualToAnchor:self.announcementsContainer.topAnchor]
+          .active = YES;
+    }
+    previousCard = card;
+  }
+
+  // Pin last card's bottom
+  if (previousCard) {
+    [previousCard.bottomAnchor
+        constraintEqualToAnchor:self.announcementsContainer.bottomAnchor]
+        .active = YES;
+  }
+
+  [self updateHeaderHeight];
+}
+
+- (void)updateHeaderHeight {
+  UIView *header = self.tableView.tableHeaderView;
+  if (!header)
+    return;
+
+  // Force layout to calculate intrinsic size
+  [header setNeedsLayout];
+  [header layoutIfNeeded];
+
+  CGFloat bannerHeight = 0;
+  if (!self.announcementsContainer.hidden) {
+    bannerHeight =
+        [self.announcementsContainer
+            systemLayoutSizeFittingSize:UILayoutFittingCompressedSize]
+            .height +
+        14;
+  }
+  CGFloat totalHeight = 120 + bannerHeight;
+  header.frame = CGRectMake(0, 0, self.tableView.frame.size.width, totalHeight);
+  self.tableView.tableHeaderView = header;
+}
+
+- (void)viewDidLayoutSubviews {
+  [super viewDidLayoutSubviews];
+  // Update gradient frames
+  for (UIView *card in self.announcementsContainer.subviews) {
+    for (CALayer *layer in card.layer.sublayers) {
+      if ([layer isKindOfClass:[CAGradientLayer class]]) {
+        layer.frame = card.bounds;
+      }
+    }
+  }
+}
+
+#pragma mark - Lead Admin API
+
+- (NSString *)deviceIdentifier {
+  NSString *saved =
+      [[NSUserDefaults standardUserDefaults] stringForKey:@"LeadDeviceID"];
+  if (saved)
+    return saved;
+  NSString *newID = [[NSUUID UUID] UUIDString];
+  [[NSUserDefaults standardUserDefaults] setObject:newID
+                                            forKey:@"LeadDeviceID"];
+  return newID;
+}
+
+- (void)registerDevice {
+  struct utsname systemInfo;
+  uname(&systemInfo);
+  NSString *model = [NSString stringWithCString:systemInfo.machine
+                                       encoding:NSUTF8StringEncoding];
+
+  NSDictionary *payload = @{
+    @"device_id" : [self deviceIdentifier],
+    @"tweak_version" : kLeadTweakVersion,
+    @"telegram_version" : [[NSBundle mainBundle]
+        objectForInfoDictionaryKey:@"CFBundleShortVersionString"]
+        ?: @"",
+    @"device_model" : model ?: @"",
+    @"ios_version" : [[UIDevice currentDevice] systemVersion] ?: @"",
+    @"locale" : [[NSLocale currentLocale] languageCode] ?: @"",
+    @"client_app" : [[NSBundle mainBundle] bundleIdentifier] ?: @""
+  };
+
+  NSData *body = [NSJSONSerialization dataWithJSONObject:payload
+                                                 options:0
+                                                   error:nil];
+  NSURL *url =
+      [NSURL URLWithString:[NSString stringWithFormat:@"%@/api/register",
+                                                      kLeadAPIBase]];
+  NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+  req.HTTPMethod = @"POST";
+  req.HTTPBody = body;
+  [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+  req.timeoutInterval = 10;
+
+  [[[NSURLSession sharedSession]
+      dataTaskWithRequest:req
+        completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
+          if (e)
+            NSLog(@"[Lead] Register failed: %@", e.localizedDescription);
+        }] resume];
+}
+
+- (void)fetchAnnouncement {
+  NSURL *url = [NSURL
+      URLWithString:[NSString stringWithFormat:@"%@/api/announcement?v=%@",
+                                               kLeadAPIBase,
+                                               kLeadTweakVersion]];
+  NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+  req.timeoutInterval = 10;
+
+  [[[NSURLSession sharedSession]
+      dataTaskWithRequest:req
+        completionHandler:^(NSData *data, NSURLResponse *response,
+                            NSError *error) {
+          if (error || !data)
+            return;
+
+          id parsed = [NSJSONSerialization JSONObjectWithData:data
+                                                      options:0
+                                                        error:nil];
+
+          dispatch_async(dispatch_get_main_queue(), ^{
+            if ([parsed isKindOfClass:[NSArray class]]) {
+              self.announcementsData = (NSArray *)parsed;
+            } else if ([parsed isKindOfClass:[NSDictionary class]]) {
+              self.announcementsData = @[ parsed ];
+            } else {
+              self.announcementsData = @[];
+            }
+            [self rebuildAnnouncementCards];
+          });
+        }] resume];
 }
 
 - (void)setupApplyButton {
@@ -213,7 +605,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   case READ_RECEIPT:
     return 2;
   case MISC:
-    return 6;
+    return 7;
   case FILE_FIXER:
     return 2;
   case FAKE_LOCATION:
@@ -406,24 +798,43 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     cell.imageView.image = nil;
 
     if (indexPath.row == 0) {
+      cell.imageView.image = [UIImage systemImageNamed:@"nosign"];
+      cell.imageView.tintColor = [self dynamicColorBW];
       cell.textLabel.text = TGLoc(@"DISABLE_ALL_ADS_TITLE");
       cell.detailTextLabel.text = TGLoc(@"DISABLE_ALL_ADS_SUBTITLE");
     } else if (indexPath.row == 1) {
+      cell.imageView.image = [UIImage systemImageNamed:@"lock.open.fill"];
+      cell.imageView.tintColor = [self dynamicColorBW];
       cell.textLabel.text = TGLoc(@"ENABLE_SAVING_PROTECTED_CONTENT_TITLE");
       cell.detailTextLabel.text =
           TGLoc(@"ENABLE_SAVING_PROTECTED_CONTENT_SUBTITLE");
     } else if (indexPath.row == 2) {
+      cell.imageView.image = [UIImage systemImageNamed:@"trash.slash.fill"];
+      cell.imageView.tintColor = [self dynamicColorBW];
       cell.textLabel.text = TGLoc(@"ANTI_REVOKE_TITLE");
       cell.detailTextLabel.text = TGLoc(@"ANTI_REVOKE_SUBTITLE");
     } else if (indexPath.row == 3) {
-      cell.textLabel.text = TGLoc(@"ANTI_EDIT_TITLE");
-      cell.detailTextLabel.text = TGLoc(@"ANTI_EDIT_SUBTITLE");
+      cell.imageView.image =
+          [UIImage systemImageNamed:@"clock.arrow.circlepath"];
+      cell.imageView.tintColor = [self dynamicColorBW];
+      cell.textLabel.text = TGLoc(@"ANTI_AUTO_DELETE_TITLE");
+      cell.detailTextLabel.text = TGLoc(@"ANTI_AUTO_DELETE_SUBTITLE");
     } else if (indexPath.row == 4) {
+      cell.imageView.image = [UIImage systemImageNamed:@"camera.fill"];
+      cell.imageView.tintColor = [self dynamicColorBW];
       cell.textLabel.text = TGLoc(@"ANTI_SCREENSHOT_TITLE");
       cell.detailTextLabel.text = TGLoc(@"ANTI_SCREENSHOT_SUBTITLE");
     } else if (indexPath.row == 5) {
+      cell.imageView.image = [UIImage systemImageNamed:@"eye.fill"];
+      cell.imageView.tintColor = [self dynamicColorBW];
       cell.textLabel.text = TGLoc(@"ANTI_SELF_DESTRUCT_TITLE");
       cell.detailTextLabel.text = TGLoc(@"ANTI_SELF_DESTRUCT_SUBTITLE");
+    } else if (indexPath.row == 6) {
+      cell.imageView.image =
+          [UIImage systemImageNamed:@"phone.badge.checkmark"];
+      cell.imageView.tintColor = [self dynamicColorBW];
+      cell.textLabel.text = TGLoc(@"CONFIRM_CALLS_TITLE");
+      cell.detailTextLabel.text = TGLoc(@"CONFIRM_CALLS_SUBTITLE");
     }
 
     UISwitch *toggle = (UISwitch *)cell.accessoryView;
@@ -724,11 +1135,13 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     case 2:
       return kAntiRevoke;
     case 3:
-      return kAntiEdit;
+      return kAntiAutoDelete;
     case 4:
       return kDisableScreenshotNotification;
     case 5:
       return kAntiSelfDestruct;
+    case 6:
+      return kConfirmCalls;
     default:
       return nil;
     }

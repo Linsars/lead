@@ -83,6 +83,11 @@
 "ANTI_SCREENSHOT_TITLE" = "Ẩn thông báo chụp màn hình";
 "ANTI_SCREENSHOT_SUBTITLE" = "Không gửi thông báo chụp màn hình trong đoạn chat bí mật và kênh được bảo vệ.";
 
+"ANTI_SELF_DESTRUCT_TITLE" = "Xem media biến mất tự do";
+"ANTI_SELF_DESTRUCT_SUBTITLE" = "Mở ảnh/video biến mất mà không kích hoạt bộ đếm tự hủy.";
+"ANTI_AUTO_DELETE_TITLE" = "Lưu tin nhắn tự xóa";
+"ANTI_AUTO_DELETE_SUBTITLE" = "Ngăn tin nhắn bị xóa trong đoạn chat có tự xóa (1 ngày, 7 ngày, v.v.).";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Sửa lỗi chọn tệp";
 "FIX_FILE_PICKER_SUBTITLE" = "Khắc phục lỗi không thể chọn tệp từ ứng dụng Files trên bản sideload";

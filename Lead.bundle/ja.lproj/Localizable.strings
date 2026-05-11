@@ -83,6 +83,11 @@
 "ANTI_SCREENSHOT_TITLE" = "スクリーンショット通知を隠す";
 "ANTI_SCREENSHOT_SUBTITLE" = "シークレットチャットや保護チャンネルでのスクリーンショット通知を送信しません。";
 
+"ANTI_SELF_DESTRUCT_TITLE" = "消えるメディアを自由に表示";
+"ANTI_SELF_DESTRUCT_SUBTITLE" = "自壊タイマーを起動せずに1回限りの写真/動画を開く。";
+"ANTI_AUTO_DELETE_TITLE" = "自動削除メッセージを保存";
+"ANTI_AUTO_DELETE_SUBTITLE" = "自動削除（1日、7日など）のあるチャットでメッセージが削除されるのを防ぐ。";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "ファイルピッカーを修正";
 "FIX_FILE_PICKER_SUBTITLE" = "サイドロード版でファイルアプリからファイルを選択できない問題を修正します。";

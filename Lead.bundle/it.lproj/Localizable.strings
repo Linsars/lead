@@ -85,6 +85,11 @@
 "ANTI_SCREENSHOT_TITLE" = "Nascondi notifica screenshot";
 "ANTI_SCREENSHOT_SUBTITLE" = "Impedisce l'invio di notifiche di screenshot nelle chat private e nei canali protetti.";
 
+"ANTI_SELF_DESTRUCT_TITLE" = "Visualizza media che scompaiono liberamente";
+"ANTI_SELF_DESTRUCT_SUBTITLE" = "Apri foto/video che scompaiono senza attivare il timer di autodistruzione.";
+"ANTI_AUTO_DELETE_TITLE" = "Salva messaggi ad auto-eliminazione";
+"ANTI_AUTO_DELETE_SUBTITLE" = "Impedisce l'eliminazione dei messaggi nelle chat con auto-eliminazione (1 giorno, 7 giorni, ecc.).";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Correggi selezione file";
 "FIX_FILE_PICKER_SUBTITLE" = "Corregge il problema per cui non puoi selezionare file dall'app File nelle versioni sideloaded";

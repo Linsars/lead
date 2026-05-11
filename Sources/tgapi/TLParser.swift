@@ -382,22 +382,27 @@ class TLParser: NSObject {
         }
     }
 
-    private static func stripNoForwards(_ chat: Api.Chat) -> Api.Chat {
+    private static func stripNoForwards(_ chat: Api.Chat) -> (Api.Chat, Bool) {
         guard UserDefaults.standard.bool(forKey: "disableForwardRestriction") ||
               UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") ||
-              UserDefaults.standard.bool(forKey: "LeadAntiAutoDelete") else { return chat }
+              UserDefaults.standard.bool(forKey: "LeadAntiAutoDelete") else { return (chat, false) }
               
         switch chat {
         case let .channel(data):
             // Bit 16 is standard, bit 27 is used in neutralizedPayload, bit 5 is restricted
             // Bit 27: copyProtectionEnabled
-            if (data.flags & (1 << 27)) != 0 {
-                protectedChannelIds.insert(data.id)
-            }
             let mask: Int32 = ~( (1 << 16) | (1 << 27) | (1 << 5) )
-            return .channel(Api.Chat.Cons_channel(
-                flags: data.flags & mask,
-                flags2: data.flags2 & mask,
+            
+            let newFlags = data.flags & mask
+            let newFlags2 = data.flags2 & mask
+            
+            if newFlags == data.flags && newFlags2 == data.flags2 {
+                return (chat, false)
+            }
+
+            return (.channel(Api.Chat.Cons_channel(
+                flags: newFlags,
+                flags2: newFlags2,
                 id: data.id, accessHash: data.accessHash, title: data.title,
                 username: data.username, photo: data.photo, date: data.date,
                 restrictionReason: data.restrictionReason, adminRights: data.adminRights,
@@ -407,40 +412,56 @@ class TLParser: NSObject {
                 emojiStatus: data.emojiStatus, level: data.level, subscriptionUntilDate: data.subscriptionUntilDate,
                 botVerificationIcon: data.botVerificationIcon, sendPaidMessagesStars: data.sendPaidMessagesStars,
                 linkedMonoforumId: data.linkedMonoforumId
-            ))
+            )), true)
         case let .chat(data):
             // Bit 14/16/25 are used for restrictions
             let mask: Int32 = ~( (1 << 14) | (1 << 16) | (1 << 25) )
-            return .chat(Api.Chat.Cons_chat(
-                flags: data.flags & mask,
+            let newFlags = data.flags & mask
+            if newFlags == data.flags {
+                return (chat, false)
+            }
+            return (.chat(Api.Chat.Cons_chat(
+                flags: newFlags,
                 id: data.id, title: data.title, photo: data.photo,
                 participantsCount: data.participantsCount, date: data.date, version: data.version,
                 migratedTo: data.migratedTo, adminRights: data.adminRights,
                 defaultBannedRights: data.defaultBannedRights
-            ))
+            )), true)
         default:
-            return chat
+            return (chat, false)
         }
     }
 
-    private static func stripNoForwardsFromChats(_ chats: [Api.Chat]) -> [Api.Chat] {
-        return chats.map { stripNoForwards($0) }
+    private static func stripNoForwardsFromChats(_ chats: [Api.Chat]) -> ([Api.Chat], Bool) {
+        var modified = false
+        let newChats = chats.map { chat -> Api.Chat in
+            let (stripped, changed) = stripNoForwards(chat)
+            if changed {
+                modified = true
+            }
+            return stripped
+        }
+        return (newChats, modified)
     }
     
-    private static func stripNoForwardsFromFullChat(_ chatFull: Api.ChatFull) -> Api.ChatFull {
+    private static func stripNoForwardsFromFullChat(_ chatFull: Api.ChatFull) -> (Api.ChatFull, Bool) {
         guard UserDefaults.standard.bool(forKey: "disableForwardRestriction") ||
               UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") ||
-              UserDefaults.standard.bool(forKey: "LeadAntiAutoDelete") else { return chatFull }
+              UserDefaults.standard.bool(forKey: "LeadAntiAutoDelete") else { return (chatFull, false) }
               
         switch chatFull {
         case let .channelFull(data):
             // Bit 10 is noforwards in some versions, clearing multiple bits for safety
-            if (data.flags & (1 << 10)) != 0 {
-                protectedChannelIds.insert(data.id)
-            }
             let mask: Int32 = ~( (1 << 10) | (1 << 27) | (1 << 16) | (1 << 26) )
-            return .channelFull(Api.ChatFull.Cons_channelFull(
-                flags: data.flags & mask, flags2: data.flags2 & mask, id: data.id, about: data.about,
+            let newFlags = data.flags & mask
+            let newFlags2 = data.flags2 & mask
+            
+            if newFlags == data.flags && newFlags2 == data.flags2 {
+                return (chatFull, false)
+            }
+            
+            return (.channelFull(Api.ChatFull.Cons_channelFull(
+                flags: newFlags, flags2: newFlags2, id: data.id, about: data.about,
                 participantsCount: data.participantsCount, adminsCount: data.adminsCount,
                 kickedCount: data.kickedCount, bannedCount: data.bannedCount, onlineCount: data.onlineCount,
                 readInboxMaxId: data.readInboxMaxId, readOutboxMaxId: data.readOutboxMaxId,
@@ -458,18 +479,22 @@ class TLParser: NSObject {
                 boostsUnrestrict: data.boostsUnrestrict, emojiset: data.emojiset,
                 botVerification: data.botVerification, stargiftsCount: data.stargiftsCount,
                 sendPaidMessagesStars: data.sendPaidMessagesStars, mainTab: data.mainTab
-            ))
+            )), true)
         case let .chatFull(data):
             let mask: Int32 = ~( (1 << 10) | (1 << 27) | (1 << 16) | (1 << 26) )
-            return .chatFull(Api.ChatFull.Cons_chatFull(
-                flags: data.flags & mask, id: data.id, about: data.about, participants: data.participants,
+            let newFlags = data.flags & mask
+            if newFlags == data.flags {
+                return (chatFull, false)
+            }
+            return (.chatFull(Api.ChatFull.Cons_chatFull(
+                flags: newFlags, id: data.id, about: data.about, participants: data.participants,
                 chatPhoto: data.chatPhoto, notifySettings: data.notifySettings, exportedInvite: data.exportedInvite,
                 botInfo: data.botInfo, pinnedMsgId: data.pinnedMsgId, folderId: data.folderId, call: data.call,
                 ttlPeriod: data.ttlPeriod, groupcallDefaultJoinAs: data.groupcallDefaultJoinAs,
                 themeEmoticon: data.themeEmoticon, requestsPending: data.requestsPending,
                 recentRequesters: data.recentRequesters, availableReactions: data.availableReactions,
                 reactionsLimit: data.reactionsLimit
-            ))
+            )), true)
         }
     }
 
@@ -528,11 +553,11 @@ class TLParser: NSObject {
         return (newMessageText, newEntities)
     }
 
-    private static func stripTTLMessage(_ apiMsg: Api.Message) -> Api.Message {
+    private static func stripTTLMessage(_ apiMsg: Api.Message) -> (Api.Message, Bool) {
         guard UserDefaults.standard.bool(forKey: "disableForwardRestriction") || 
-              UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") else { return apiMsg }
+              UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") else { return (apiMsg, false) }
         guard case let .message(data) = apiMsg else {
-            return apiMsg
+            return (apiMsg, false)
         }
         
         var isDestructing = false
@@ -565,7 +590,7 @@ class TLParser: NSObject {
             newFlags |= (1 << 7)
         }
         
-        return .message(Api.Message.Cons_message(
+        let resultMsg = Api.Message.message(Api.Message.Cons_message(
             flags: newFlags, flags2: newFlags2, id: data.id, fromId: data.fromId,
             fromBoostsApplied: data.fromBoostsApplied, fromRank: data.fromRank, peerId: data.peerId,
             savedPeerId: data.savedPeerId, fwdFrom: data.fwdFrom,
@@ -584,16 +609,40 @@ class TLParser: NSObject {
             suggestedPost: data.suggestedPost, scheduleRepeatPeriod: data.scheduleRepeatPeriod,
             summaryFromLanguage: data.summaryFromLanguage
         ))
+        
+        let modified = (newFlags != data.flags) || (newMessageText != data.message) || (newEntities?.count != data.entities?.count) || (newFlags2 != data.flags2)
+        
+        return (resultMsg, modified)
     }
 
-    private static func stripTTLUpdate(_ update: Api.Update) -> Api.Update {
+    private static func stripTTLUpdates(_ updates: [Api.Update]) -> ([Api.Update], Bool) {
+        var modified = false
+        let result = updates.map { update -> Api.Update in
+            let (stripped, changed) = stripTTLUpdate(update)
+            if changed {
+                modified = true
+            }
+            return stripped
+        }
+        return (result, modified)
+    }
+
+    private static func stripTTLUpdate(_ update: Api.Update) -> (Api.Update, Bool) {
         switch update {
         case let .updateNewMessage(data):
-            return .updateNewMessage(Api.Update.Cons_updateNewMessage(message: stripTTLMessage(data.message), pts: data.pts, ptsCount: data.ptsCount))
+            let (strippedMsg, changed) = stripTTLMessage(data.message)
+            if !changed {
+                return (update, false)
+            }
+            return (.updateNewMessage(Api.Update.Cons_updateNewMessage(message: strippedMsg, pts: data.pts, ptsCount: data.ptsCount)), true)
         case let .updateNewChannelMessage(data):
-            return .updateNewChannelMessage(Api.Update.Cons_updateNewChannelMessage(message: stripTTLMessage(data.message), pts: data.pts, ptsCount: data.ptsCount))
+            let (strippedMsg, changed) = stripTTLMessage(data.message)
+            if !changed {
+                return (update, false)
+            }
+            return (.updateNewChannelMessage(Api.Update.Cons_updateNewChannelMessage(message: strippedMsg, pts: data.pts, ptsCount: data.ptsCount)), true)
         default:
-            return update
+            return (update, false)
         }
     }
 
@@ -644,13 +693,18 @@ class TLParser: NSObject {
         if let updates = result as? Api.Updates {
             switch updates {
             case let .updates(data):
-                let stripped = data.updates.map { stripTTLUpdate($0) }
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.Updates.updates(Api.Updates.Cons_updates(updates: stripped, users: data.users, chats: newChats, date: data.date, seq: data.seq))
-                modified = true
+                let (stripped, anyStripped) = stripTTLUpdates(data.updates)
+                let (newChats, anyChatsChanged) = stripNoForwardsFromChats(data.chats)
+                if anyStripped || anyChatsChanged {
+                    newResult = Api.Updates.updates(Api.Updates.Cons_updates(updates: stripped, users: data.users, chats: newChats, date: data.date, seq: data.seq))
+                    modified = true
+                }
             case let .updateShort(data):
-                newResult = Api.Updates.updateShort(Api.Updates.Cons_updateShort(update: stripTTLUpdate(data.update), date: data.date))
-                modified = true
+                let (stripped, changed) = stripTTLUpdate(data.update)
+                if changed {
+                    newResult = Api.Updates.updateShort(Api.Updates.Cons_updateShort(update: stripped, date: data.date))
+                    modified = true
+                }
             case let .updateShortMessage(data):
                 var isDestructing = false
                 if data.ttlPeriod != nil || (Int(data.flags) & Int(1 << 25)) != 0 {
@@ -670,12 +724,14 @@ class TLParser: NSObject {
                 }
                 
                 let (newMessageText, newEntities) = applyTTLIndicator(message: data.message, entities: data.entities, shouldApply: isDestructing)
-                if (newEntities?.count ?? 0) > 0 {
-                    newFlags |= (1 << 7)
-                }
                 
-                newResult = Api.Updates.updateShortMessage(Api.Updates.Cons_updateShortMessage(flags: newFlags, id: data.id, userId: data.userId, message: newMessageText, pts: data.pts, ptsCount: data.ptsCount, date: data.date, fwdFrom: data.fwdFrom, viaBotId: data.viaBotId, replyTo: data.replyTo, entities: newEntities, ttlPeriod: isDestructing ? nil : data.ttlPeriod))
-                modified = true
+                if newFlags != data.flags || newMessageText != data.message || (newEntities?.count ?? 0) != (data.entities?.count ?? 0) {
+                    if (newEntities?.count ?? 0) > 0 {
+                        newFlags |= (1 << 7)
+                    }
+                    newResult = Api.Updates.updateShortMessage(Api.Updates.Cons_updateShortMessage(flags: newFlags, id: data.id, userId: data.userId, message: newMessageText, pts: data.pts, ptsCount: data.ptsCount, date: data.date, fwdFrom: data.fwdFrom, viaBotId: data.viaBotId, replyTo: data.replyTo, entities: newEntities, ttlPeriod: isDestructing ? nil : data.ttlPeriod))
+                    modified = true
+                }
             case let .updateShortChatMessage(data):
                 var isDestructing = false
                 if data.ttlPeriod != nil || (Int(data.flags) & Int(1 << 25)) != 0 {
@@ -695,91 +751,128 @@ class TLParser: NSObject {
                 }
                 
                 let (newMessageText, newEntities) = applyTTLIndicator(message: data.message, entities: data.entities, shouldApply: isDestructing)
-                if (newEntities?.count ?? 0) > 0 {
-                    newFlags |= (1 << 7)
-                }
                 
-                newResult = Api.Updates.updateShortChatMessage(Api.Updates.Cons_updateShortChatMessage(flags: newFlags, id: data.id, fromId: data.fromId, chatId: data.chatId, message: newMessageText, pts: data.pts, ptsCount: data.ptsCount, date: data.date, fwdFrom: data.fwdFrom, viaBotId: data.viaBotId, replyTo: data.replyTo, entities: newEntities, ttlPeriod: isDestructing ? nil : data.ttlPeriod))
-                modified = true
+                if newFlags != data.flags || newMessageText != data.message || (newEntities?.count ?? 0) != (data.entities?.count ?? 0) {
+                    if (newEntities?.count ?? 0) > 0 {
+                        newFlags |= (1 << 7)
+                    }
+                    newResult = Api.Updates.updateShortChatMessage(Api.Updates.Cons_updateShortChatMessage(flags: newFlags, id: data.id, fromId: data.fromId, chatId: data.chatId, message: newMessageText, pts: data.pts, ptsCount: data.ptsCount, date: data.date, fwdFrom: data.fwdFrom, viaBotId: data.viaBotId, replyTo: data.replyTo, entities: newEntities, ttlPeriod: isDestructing ? nil : data.ttlPeriod))
+                    modified = true
+                }
             case let .updateShortSentMessage(data):
                 let newMedia = data.media.map { stripTTLMedia($0, messageId: data.id) }
                 let isMediaDestructing = selfDestructingMessageIds.contains(data.id) || data.ttlPeriod != nil || (Int(data.flags) & Int(1 << 25)) != 0
-                let newFlags = isMediaDestructing ? (data.flags & ~(1 << 25) & ~(1 << 5)) : data.flags
-                newResult = Api.Updates.updateShortSentMessage(Api.Updates.Cons_updateShortSentMessage(flags: newFlags, id: data.id, pts: data.pts, ptsCount: data.ptsCount, date: data.date, media: newMedia, entities: data.entities, ttlPeriod: isMediaDestructing ? nil : data.ttlPeriod))
-                modified = true
+                var newFlags = isMediaDestructing ? (data.flags & ~(1 << 25) & ~(1 << 5)) : data.flags
+                
+                if newFlags != data.flags || isMediaDestructing {
+                    newResult = Api.Updates.updateShortSentMessage(Api.Updates.Cons_updateShortSentMessage(flags: newFlags, id: data.id, pts: data.pts, ptsCount: data.ptsCount, date: data.date, media: newMedia, entities: data.entities, ttlPeriod: isMediaDestructing ? nil : data.ttlPeriod))
+                    modified = true
+                }
             case let .updatesCombined(data):
-                let stripped = data.updates.map { stripTTLUpdate($0) }
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.Updates.updatesCombined(Api.Updates.Cons_updatesCombined(updates: stripped, users: data.users, chats: newChats, date: data.date, seqStart: data.seqStart, seq: data.seq))
-                modified = true
+                let (stripped, anyStripped) = stripTTLUpdates(data.updates)
+                let (newChats, anyChatsChanged) = stripNoForwardsFromChats(data.chats)
+                if anyStripped || anyChatsChanged {
+                    newResult = Api.Updates.updatesCombined(Api.Updates.Cons_updatesCombined(updates: stripped, users: data.users, chats: newChats, date: data.date, seqStart: data.seqStart, seq: data.seq))
+                    modified = true
+                }
             default:
                 break
             }
         } else if let msgs = result as? Api.messages.Messages {
             switch msgs {
             case let .messages(data):
-                let (withInd, changed) = applyDeletedIndicator(to: data.messages)
-                let newMessages = withInd.map { stripTTLMessage($0) }
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.messages.Messages.messages(Api.messages.Messages.Cons_messages(messages: newMessages, topics: data.topics, chats: newChats, users: data.users))
-                modified = changed || true
+                let (withInd, changedInd) = applyDeletedIndicator(to: data.messages)
+                let (newChats, changedChats) = stripNoForwardsFromChats(data.chats)
+                if changedInd || changedChats {
+                    let newMessages = withInd.map { stripTTLMessage($0).0 }
+                    newResult = Api.messages.Messages.messages(Api.messages.Messages.Cons_messages(messages: newMessages, topics: data.topics, chats: newChats, users: data.users))
+                    modified = true
+                }
             case let .messagesSlice(data):
-                let (withInd, changed) = applyDeletedIndicator(to: data.messages)
-                let newMessages = withInd.map { stripTTLMessage($0) }
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.messages.Messages.messagesSlice(Api.messages.Messages.Cons_messagesSlice(flags: data.flags, count: data.count, nextRate: data.nextRate, offsetIdOffset: data.offsetIdOffset, searchFlood: data.searchFlood, messages: newMessages, topics: data.topics, chats: newChats, users: data.users))
-                modified = changed || true
+                let (withInd, changedInd) = applyDeletedIndicator(to: data.messages)
+                let (newChats, changedChats) = stripNoForwardsFromChats(data.chats)
+                if changedInd || changedChats {
+                    let newMessages = withInd.map { stripTTLMessage($0).0 }
+                    newResult = Api.messages.Messages.messagesSlice(Api.messages.Messages.Cons_messagesSlice(flags: data.flags, count: data.count, nextRate: data.nextRate, offsetIdOffset: data.offsetIdOffset, searchFlood: data.searchFlood, messages: newMessages, topics: data.topics, chats: newChats, users: data.users))
+                    modified = true
+                }
             case let .channelMessages(data):
-                let (withInd, changed) = applyDeletedIndicator(to: data.messages)
-                let newMessages = withInd.map { stripTTLMessage($0) }
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.messages.Messages.channelMessages(Api.messages.Messages.Cons_channelMessages(flags: data.flags, pts: data.pts, count: data.count, offsetIdOffset: data.offsetIdOffset, messages: newMessages, topics: data.topics, chats: newChats, users: data.users))
-                modified = changed || true
+                let (withInd, changedInd) = applyDeletedIndicator(to: data.messages)
+                let (newChats, changedChats) = stripNoForwardsFromChats(data.chats)
+                if changedInd || changedChats {
+                    let newMessages = withInd.map { stripTTLMessage($0).0 }
+                    newResult = Api.messages.Messages.channelMessages(Api.messages.Messages.Cons_channelMessages(flags: data.flags, pts: data.pts, count: data.count, offsetIdOffset: data.offsetIdOffset, messages: newMessages, topics: data.topics, chats: newChats, users: data.users))
+                    modified = true
+                }
             default:
                 break
             }
         } else if let chatFull = result as? Api.messages.ChatFull {
             switch chatFull {
             case let .chatFull(data):
-                let newFullChat = stripNoForwardsFromFullChat(data.fullChat)
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.messages.ChatFull.chatFull(Api.messages.ChatFull.Cons_chatFull(fullChat: newFullChat, chats: newChats, users: data.users))
-                modified = true
+                let (newFullChat, changedFull) = stripNoForwardsFromFullChat(data.fullChat)
+                let (newChats, changedChats) = stripNoForwardsFromChats(data.chats)
+                if changedFull || changedChats {
+                    newResult = Api.messages.ChatFull.chatFull(Api.messages.ChatFull.Cons_chatFull(fullChat: newFullChat, chats: newChats, users: data.users))
+                    modified = true
+                }
             }
         } else if let chats = result as? Api.messages.Chats {
             switch chats {
             case let .chats(data):
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.messages.Chats.chats(Api.messages.Chats.Cons_chats(chats: newChats))
-                modified = true
+                let (newChats, changed) = stripNoForwardsFromChats(data.chats)
+                if changed {
+                    newResult = Api.messages.Chats.chats(Api.messages.Chats.Cons_chats(chats: newChats))
+                    modified = true
+                }
             case let .chatsSlice(data):
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.messages.Chats.chatsSlice(Api.messages.Chats.Cons_chatsSlice(count: data.count, chats: newChats))
-                modified = true
+                let (newChats, changed) = stripNoForwardsFromChats(data.chats)
+                if changed {
+                    newResult = Api.messages.Chats.chatsSlice(Api.messages.Chats.Cons_chatsSlice(count: data.count, chats: newChats))
+                    modified = true
+                }
             }
         } else if let update = result as? Api.Update {
-            let stripped = stripTTLUpdate(update)
-            newResult = stripped
-            modified = true
+            let (stripped, changed) = stripTTLUpdate(update)
+            if changed {
+                newResult = stripped
+                modified = true
+            }
         } else if let message = result as? Api.Message {
-            let stripped = stripTTLMessage(message)
-            newResult = stripped
-            modified = true
+            let (stripped, changed) = stripTTLMessage(message)
+            if changed {
+                newResult = stripped
+                modified = true
+            }
         } else if let discussion = result as? Api.messages.DiscussionMessage {
             switch discussion {
             case let .discussionMessage(data):
-                let newMessages = data.messages.map { stripTTLMessage($0) }
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.messages.DiscussionMessage.discussionMessage(Api.messages.DiscussionMessage.Cons_discussionMessage(flags: data.flags, messages: newMessages, maxId: data.maxId, readInboxMaxId: data.readInboxMaxId, readOutboxMaxId: data.readOutboxMaxId, unreadCount: data.unreadCount, chats: newChats, users: data.users))
-                modified = true
+                let (newChats, changedChats) = stripNoForwardsFromChats(data.chats)
+                var changedMsgs = false
+                let newMessages = data.messages.map { msg -> Api.Message in
+                    let (stripped, changed) = stripTTLMessage(msg)
+                    if changed { changedMsgs = true }
+                    return stripped
+                }
+                if changedChats || changedMsgs {
+                    newResult = Api.messages.DiscussionMessage.discussionMessage(Api.messages.DiscussionMessage.Cons_discussionMessage(flags: data.flags, messages: newMessages, maxId: data.maxId, readInboxMaxId: data.readInboxMaxId, readOutboxMaxId: data.readOutboxMaxId, unreadCount: data.unreadCount, chats: newChats, users: data.users))
+                    modified = true
+                }
             }
         } else if let peerDialogs = result as? Api.messages.PeerDialogs {
             switch peerDialogs {
             case let .peerDialogs(data):
-                let newMessages = data.messages.map { stripTTLMessage($0) }
-                let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.messages.PeerDialogs.peerDialogs(Api.messages.PeerDialogs.Cons_peerDialogs(dialogs: data.dialogs, messages: newMessages, chats: newChats, users: data.users, state: data.state))
-                modified = true
+                let (newChats, changedChats) = stripNoForwardsFromChats(data.chats)
+                var changedMsgs = false
+                let newMessages = data.messages.map { msg -> Api.Message in
+                    let (stripped, changed) = stripTTLMessage(msg)
+                    if changed { changedMsgs = true }
+                    return stripped
+                }
+                if changedChats || changedMsgs {
+                    newResult = Api.messages.PeerDialogs.peerDialogs(Api.messages.PeerDialogs.Cons_peerDialogs(dialogs: data.dialogs, messages: newMessages, chats: newChats, users: data.users, state: data.state))
+                    modified = true
+                }
             }
         }
         

@@ -11,7 +11,49 @@
 - (void)layoutIfNeeded;
 @end
 
+@interface ASControlNode : ASDisplayNode
+- (void)sendActionsForControlEvents:(NSUInteger)controlEvents withEvent:(UIEvent *)event;
+@end
+
+@interface _TtC18MultiScaleTextNode18MultiScaleTextNode : ASDisplayNode
+@end
+
+@interface _TtCC20StoryContainerScreen32StoryItemSetContainerComponent4View : UIView
+- (void)requestSave;
+@end
+
+@interface _TtC14PeerInfoScreen18PeerInfoHeaderNode : ASDisplayNode
+@property (nonatomic, strong) id peer;
+@end
+
 static __weak TGLocalization *TGLocalizationShared = nil;
+
+%hook _TtC10TelegramUI29ChatPresentationInterfaceState
+- (BOOL)copyProtectionEnabled {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
+        return NO;
+    }
+    return %orig;
+}
+%end
+
+%hook _TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState
+- (BOOL)copyProtectionEnabled {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
+        return NO;
+    }
+    return %orig;
+}
+%end
+
+%hook _TtC7Postbox7Message
+- (BOOL)isCopyProtected {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
+        return NO;
+    }
+    return %orig;
+}
+%end
 
 %hook ChatMessageItem
 - (BOOL)noForwards {
@@ -32,7 +74,6 @@ static __weak TGLocalization *TGLocalizationShared = nil;
 %end
 
 %hook TGLocalization
-
 - (id)initWithVersion:(int)a code:(id)b dict:(id)c isActive:(BOOL)d {
     TGLocalization *instance = %orig;
     if (a != 96929692 && instance) {
@@ -40,7 +81,6 @@ static __weak TGLocalization *TGLocalizationShared = nil;
     }
     return instance;
 }
-
 %end
 
 void showUI() {
@@ -62,17 +102,19 @@ void showUI() {
 %hook ASDisplayNode
 %property (nonatomic, strong) UILongPressGestureRecognizer *longPressGesture;
 
+- (void)didLoad {
+    %orig;
+}
+
 %new
 - (void)__handleSettingsTabLongPress:(UILongPressGestureRecognizer *)gesture {
     if (gesture.state == UIGestureRecognizerStateBegan) {
 		showUI();
     }
 }
-
 %end
 
 %hook PeerInfoScreenItemNode
-
 - (void)didEnterHierarchy {
     %orig;
 
@@ -100,7 +142,9 @@ void showUI() {
 
             // We match against either the exact localized title or the English default
             BOOL isTarget = [child.accessibilityLabel isEqualToString:localizedTitle] || 
-                            [child.accessibilityLabel isEqualToString:@"Ask a Question"];
+                            [child.accessibilityLabel isEqualToString:@"Ask a Question"] ||
+                            [child.accessibilityLabel isEqualToString:@"About Turrit"] ||
+                            [child.accessibilityLabel isEqualToString:@"О Turrit"];
 
             if (isTarget) {
                 if (![mainNode.view.gestureRecognizers containsObject:mainNode.longPressGesture]) {
@@ -110,17 +154,10 @@ void showUI() {
         }
     }
 }
-
 %end
 
 // ============================================================
 // First-launch welcome alert.
-// Shows once when Lead is injected for the first time.
-// On iPhone, UIAlertControllerStyleAlert CANNOT be dismissed by
-// tapping outside — iOS prevents it natively. The alert stays
-// visible until the user taps one of the buttons.
-// • "Join Channel →" → opens https://t.me/Leedgram, saves flag, closes alert
-// • "OK"             → closes alert, saves flag — never shows again
 // ============================================================
 static void showWelcomeAlertIfNeeded() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -132,16 +169,14 @@ static void showWelcomeAlertIfNeeded() {
 
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"Lead"
-        message:@"Lead has been successfully injected into Telegram.\n\nTo open the tweak menu: long-press the \"Ask a Question\" row in the Settings tab."
+        message:@"Lead has been successfully injected into Telegram.\n\nTo open the tweak menu: long-press the \"Ask a Question\" or \"About Turrit\" row in the Settings tab."
         preferredStyle:UIAlertControllerStyleAlert];
 
-    // Helper block — saves flag so alert never shows again
     void (^markShown)(void) = ^{
         [defaults setBool:YES forKey:@"LeadWelcomeShown"];
         [defaults synchronize];
     };
 
-    // "Join Channel" — opens the developer's Telegram channel and dismisses alert
     UIAlertAction *channelAction = [UIAlertAction
         actionWithTitle:@"Join Channel →"
                   style:UIAlertActionStyleDefault
@@ -153,7 +188,6 @@ static void showWelcomeAlertIfNeeded() {
         }
     }];
 
-    // "OK" — closes the alert, never shows again
     UIAlertAction *okAction = [UIAlertAction
         actionWithTitle:@"OK"
                   style:UIAlertActionStyleCancel
@@ -167,8 +201,6 @@ static void showWelcomeAlertIfNeeded() {
     [rootVC presentViewController:alert animated:YES completion:nil];
 }
 
-
-
 #import "../Headers.h"
 
 @interface ASDisplayNode (TGExtra)
@@ -177,19 +209,96 @@ static void showWelcomeAlertIfNeeded() {
 @end
 
 static ASDisplayNode *findNodeByClassNamePrefix(ASDisplayNode *root, NSString *prefix) {
+    if (!root) return nil;
     if ([NSStringFromClass([root class]) containsString:prefix]) {
         return root;
     }
-    if ([root respondsToSelector:@selector(subnodes)]) {
-        for (ASDisplayNode *child in root.subnodes) {
+    @try {
+        NSArray *subs = root.subnodes;
+        for (ASDisplayNode *child in subs) {
             ASDisplayNode *found = findNodeByClassNamePrefix(child, prefix);
             if (found) return found;
         }
-    }
+    } @catch (NSException *e) {}
     return nil;
 }
 
+static void injectBadgeToNode(ASDisplayNode *textNode, ASDisplayNode *headerNode, long long peerId) {
+    @try {
+        if (!textNode.view || !headerNode.view) return;
 
+        if (peerId == 0) {
+            NSString *cls = NSStringFromClass([headerNode class]);
+            if ([cls containsString:@"Settings"] || [cls containsString:@"Profile"]) {
+                peerId = [[NSUserDefaults standardUserDefaults] integerForKey:@"LeadLastKnownUserId"];
+            }
+        }
+
+        if (peerId == 0) return;
+
+        NSString *prefix = nil;
+        UIColor *badgeColor = [UIColor colorWithRed:0.0 green:0.5 blue:1.0 alpha:1.0]; // Lead Blue
+
+        // Add your IDs here
+        if (peerId == 5576711589 || peerId == 7846965839) {
+            prefix = @"👑 Lead Owner";
+            badgeColor = [UIColor colorWithRed:1.0 green:0.75 blue:0.0 alpha:1.0]; // Gold
+        } else {
+            NSNumber *currId = [NSClassFromString(@"TLParser") performSelector:@selector(getCurrentUserId)];
+            if (currId && [currId longLongValue] == peerId) {
+                prefix = @"✨ Lead User";
+            }
+        }
+        
+        if (!prefix) {
+            UIView *oldBadge = [headerNode.view viewWithTag:9988];
+            if (oldBadge) [oldBadge removeFromSuperview];
+            return;
+        }
+
+        UILabel *badge = (UILabel *)[headerNode.view viewWithTag:9988];
+        if (!badge) {
+            badge = [[UILabel alloc] init];
+            badge.tag = 9988;
+            badge.font = [UIFont boldSystemFontOfSize:10];
+            badge.textColor = [UIColor whiteColor];
+            badge.layer.cornerRadius = 4;
+            badge.layer.masksToBounds = YES;
+            badge.layer.zPosition = 9999;
+            [headerNode.view addSubview:badge];
+        }
+        
+        badge.backgroundColor = badgeColor;
+        badge.text = [NSString stringWithFormat:@" %@ ", prefix];
+        [badge sizeToFit];
+        
+        CGRect textFrame = [textNode.view convertRect:textNode.view.bounds toView:headerNode.view];
+        if (textFrame.size.width > 0) {
+            badge.frame = CGRectMake(textFrame.origin.x + textFrame.size.width + 6, 
+                                     textFrame.origin.y + (textFrame.size.height - badge.frame.size.height) / 2.0, 
+                                     badge.frame.size.width, badge.frame.size.height);
+        } else {
+            badge.frame = CGRectMake(headerNode.view.frame.size.width - badge.frame.size.width - 15, 45, badge.frame.size.width, badge.frame.size.height);
+        }
+        badge.hidden = NO;
+        [headerNode.view bringSubviewToFront:badge];
+    } @catch (NSException *e) {}
+}
+
+static void recursiveSearchAndInject(ASDisplayNode *node, ASDisplayNode *header, long long peerId) {
+    if (!node) return;
+    NSString *cls = NSStringFromClass([node class]);
+    
+    if ([cls containsString:@"TextNode"] && ![cls containsString:@"Accessibility"] && ![cls containsString:@"Button"]) {
+        injectBadgeToNode(node, header, peerId);
+    }
+    @try {
+        NSArray *subs = node.subnodes;
+        for (ASDisplayNode *sub in subs) {
+            recursiveSearchAndInject(sub, header, peerId);
+        }
+    } @catch (NSException *e) {}
+}
 
 static NSHashTable *activeMessageNodes = nil;
 
@@ -209,7 +318,6 @@ static NSHashTable *activeMessageNodes = nil;
     NSArray *deletedIds = note.userInfo[@"ids"];
     if (!deletedIds || deletedIds.count == 0) return;
     
-    // We must run on main thread, but the notification is already dispatched to main thread.
     NSHashTable *nodesCopy = nil;
     @synchronized(activeMessageNodes) {
         nodesCopy = [activeMessageNodes copy];
@@ -225,12 +333,64 @@ static NSHashTable *activeMessageNodes = nil;
 }
 @end
 
-// Hook ASDisplayNode globally to catch lazily loaded message nodes.
 %hook ASDisplayNode
-
 - (void)layout {
     %orig;
     
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableAllAds]) {
+        @try {
+            NSString *className = NSStringFromClass([self class]);
+            if ([className containsString:@"ChatSponsoredMessage"] || [className containsString:@"ChatChannelAdItemNode"]) {
+                self.view.hidden = YES;
+                self.view.alpha = 0.0;
+                return;
+            }
+
+            if ([self respondsToSelector:NSSelectorFromString(@"item")]) {
+                id item = [self valueForKey:@"item"];
+                if (item && [item respondsToSelector:NSSelectorFromString(@"message")]) {
+                    id message = [item valueForKey:@"message"];
+                    if (message && [message respondsToSelector:NSSelectorFromString(@"adAttribute")]) {
+                        if ([message valueForKey:@"adAttribute"] != nil) {
+                            self.view.hidden = YES;
+                            self.view.alpha = 0.0;
+                            return;
+                        }
+                    }
+                }
+            }
+        } @catch (NSException *e) {}
+    }
+
+    NSString *cls = NSStringFromClass([self class]);
+    BOOL isProfileHeader = [cls containsString:@"Profile"] || 
+                           [cls containsString:@"UserInfo"] || 
+                           [cls containsString:@"ContactInfo"] ||
+                           [cls containsString:@"PeerInfo"] ||
+                           [cls containsString:@"UserNode"] ||
+                           [cls containsString:@"Settings"];
+    
+    if (isProfileHeader) {
+        long long peerId = 0;
+        peerId = [[NSClassFromString(@"TLParser") performSelector:@selector(getPeerIdFromNode:) withObject:self] longLongValue];
+        
+        if (peerId == 0 && ([cls containsString:@"Settings"] || [cls containsString:@"Profile"])) {
+            peerId = [[NSUserDefaults standardUserDefaults] integerForKey:@"LeadLastKnownUserId"];
+        }
+        recursiveSearchAndInject(self, self, peerId);
+    }
+
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kHideStories]) {
+        NSString *className = NSStringFromClass([self class]);
+        if ([className containsString:@"StoryPeerList"] || 
+            [className containsString:@"StoryContainer"] ||
+            [className containsString:@"StorySetIndicator"] ||
+            [className containsString:@"AvatarStoryIndicator"]) {
+            self.view.hidden = YES;
+            self.view.alpha = 0.0;
+        }
+    }
+
     NSString *className = NSStringFromClass([self class]);
     if (![className containsString:@"ChatMessage"] || ![className containsString:@"ItemNode"]) {
         return;
@@ -279,11 +439,9 @@ static NSHashTable *activeMessageNodes = nil;
             ASDisplayNode *statusNode = findNodeByClassNamePrefix(node, @"ChatMessageDateAndStatusNode");
             if (statusNode && statusNode.view) {
                 CGRect statusFrame = [node.view convertRect:statusNode.view.bounds fromView:statusNode.view];
-                // Place to the left of the time
                 statusIcon.frame = CGRectMake(statusFrame.origin.x - 18, statusFrame.origin.y + (statusFrame.size.height / 2.0) - 7, 14, 14);
                 statusIcon.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
             } else {
-                // Fallback to bottom right if status node isn't found
                 statusIcon.frame = CGRectMake(node.view.bounds.size.width - 40, node.view.bounds.size.height - 35, 20, 20);
                 statusIcon.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
             }
@@ -292,7 +450,6 @@ static NSHashTable *activeMessageNodes = nil;
             statusIcon.hidden = NO;
             [node.view bringSubviewToFront:statusIcon];
             
-            // Play a nice spring "pop" animation if it just appeared (either created now, or un-hidden)
             if (wasHidden || isNewlyCreated) {
                 statusIcon.transform = CGAffineTransformMakeScale(0.1, 0.1);
                 statusIcon.alpha = 0.0;
@@ -314,19 +471,183 @@ static NSHashTable *activeMessageNodes = nil;
 }
 %end
 
+%hook _TtC10TelegramUI14ChatController
+- (void)viewDidLoad {
+    %orig;
+    @try {
+        id context = [((id)self) valueForKey:@"context"];
+        Class tlParser = NSClassFromString(@"TLParser");
+        if ([tlParser respondsToSelector:@selector(setSharedContext:)]) {
+            [tlParser performSelector:@selector(setSharedContext:) withObject:context];
+            
+            NSNumber *currId = [tlParser performSelector:@selector(getCurrentUserId)];
+            if (currId) {
+                [[NSUserDefaults standardUserDefaults] setInteger:[currId integerValue] forKey:@"LeadLastKnownUserId"];
+            }
+        }
+    } @catch (NSException *e) {}
+}
+%end
+
+%hook _TtC10TelegramUI22TelegramRootController
+- (void)loadView {
+    %orig;
+    @try {
+        id context = [((id)self) valueForKey:@"context"];
+        Class tlParser = NSClassFromString(@"TLParser");
+        if (context && [tlParser respondsToSelector:@selector(setSharedContext:)]) {
+            [tlParser performSelector:@selector(setSharedContext:) withObject:context];
+        }
+    } @catch (NSException *e) {}
+}
+%end
+
+%group CallConfirmHooks
+
+%hook ASControlNode
+- (void)sendActionsForControlEvents:(NSUInteger)controlEvents withEvent:(UIEvent *)event {
+    if (controlEvents == (1 << 4)) { // ASControlNodeEventTouchUpInside
+        NSString *label = [(id)self accessibilityLabel];
+        if (label && label.length > 0 && [[NSUserDefaults standardUserDefaults] boolForKey:kConfirmCalls]) {
+            NSString *lower = [label lowercaseString];
+            
+            // All known call button labels (EN, RU, case-insensitive)
+            NSSet *callLabels = [NSSet setWithArray:@[
+                @"call", @"позвонить", @"звонок"
+            ]];
+            NSSet *videoLabels = [NSSet setWithArray:@[
+                @"video", @"видео", @"video call", @"видеозвонок"
+            ]];
+            
+            BOOL isCall = [callLabels containsObject:lower];
+            BOOL isVideo = [videoLabels containsObject:lower];
+            
+            if (isCall || isVideo) {
+                UIWindow *window = UIApplication.sharedApplication.keyWindow;
+                UIViewController *rootVC = window.rootViewController;
+                while (rootVC.presentedViewController) {
+                    rootVC = rootVC.presentedViewController;
+                }
+                if (rootVC) {
+                    NSString *confirmTitle = isVideo ? @"Video Call" : @"Call";
+                    NSString *alertTitle = isVideo ? @"Start Video Call?" : @"Start Call?";
+                    
+                    UIAlertController *alert = [UIAlertController alertControllerWithTitle:alertTitle
+                                                                                   message:nil
+                                                                            preferredStyle:UIAlertControllerStyleAlert];
+                    
+                    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                             style:UIAlertActionStyleCancel
+                                                           handler:nil]];
+                    [alert addAction:[UIAlertAction actionWithTitle:confirmTitle
+                                                             style:UIAlertActionStyleDefault
+                                                           handler:^(UIAlertAction *action) {
+                        %orig(controlEvents, event);
+                    }]];
+                    
+                    [rootVC presentViewController:alert animated:YES completion:nil];
+                    return;
+                }
+            }
+        }
+    }
+    %orig;
+}
+%end
+
+%end // CallConfirmHooks
+
+%group SiriBypassHooks
+%hook INPreferences
+
++ (void)initialize {
+}
+
++ (instancetype)sharedPreferences {
+    return nil;
+}
+
++ (instancetype)alloc {
+    return nil;
+}
+
++ (instancetype)new {
+    return nil;
+}
+
+- (instancetype)init {
+    return nil;
+}
+
++ (NSInteger)siriAuthorizationStatus {
+    return 0; // INSiriAuthorizationStatusNotDetermined
+}
+
++ (void)requestSiriAuthorization:(void (^)(NSInteger status))routine {
+    if (routine) {
+        routine(0);
+    }
+}
+
+%end
+%end // SiriBypassHooks
+
 __attribute__((constructor))
 static void hook() {
+    NSLog(@"[Lead] Tweak initializing...");
+    
+    @try {
+        [[NSBundle bundleWithPath:@"/System/Library/Frameworks/Intents.framework"] load];
+        Class inPreferencesClass = objc_getClass("INPreferences");
+        if (inPreferencesClass) {
+            %init(SiriBypassHooks, INPreferences = inPreferencesClass);
+            NSLog(@"[Lead] SiriBypassHooks initialized immediately");
+        } else {
+            NSLog(@"[Lead] SiriBypassHooks init failed: INPreferences class not found");
+        }
+    } @catch (NSException *e) {
+        NSLog(@"[Lead] SiriBypassHooks init failed: %@", e);
+    }
+    
     [LeadAntiRevokeUpdater shared];
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-	 	%init(
+    
+    [[NSUserDefaults standardUserDefaults] registerDefaults:@{
+        kDisableAllAds: @NO,
+        kAntiRevoke: @NO,
+        kAntiEdit: @NO,
+        kAntiSelfDestruct: @NO,
+        kHideStories: @NO,
+        kDownloadStories: @NO,
+        kDisableMessageReadReceipt: @NO,
+        kDisableStoriesReadReceipt: @NO,
+        kDisableOnlineStatus: @NO,
+        kDisableTypingStatus: @NO,
+        kConfirmCalls: @YES
+    }];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        %init(
             PeerInfoScreenItemNode = objc_getClass("PeerInfoScreen.PeerInfoScreenItemNode"),
             ChatMessageItem = objc_getClass("_TtC10TelegramUI15ChatMessageItem"),
-            ApiChat = objc_getClass("_TtC10TelegramUI11ApiChat")
-		);
+            ApiChat = objc_getClass("_TtC10TelegramUI11ApiChat"),
+            _TtC10TelegramUI29ChatPresentationInterfaceState = objc_getClass("_TtC10TelegramUI29ChatPresentationInterfaceState"),
+            _TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState = objc_getClass("_TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState"),
+            _TtC10TelegramUI14ChatController = objc_getClass("_TtC10TelegramUI14ChatController"),
+            _TtC7Postbox7Message = objc_getClass("_TtC7Postbox7Message")
+        );
 
-        // Show welcome alert after the app UI has fully loaded
+        @try {
+            Class asControlNodeClass = objc_getClass("ASControlNode");
+            if (asControlNodeClass) {
+                %init(CallConfirmHooks, ASControlNode = asControlNodeClass);
+                NSLog(@"[Lead] CallConfirmHooks initialized");
+            }
+        } @catch (NSException *e) {
+            NSLog(@"[Lead] CallConfirmHooks init failed: %@", e);
+        }
+
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             showWelcomeAlertIfNeeded();
         });
-	});
-}
+    });
+ }

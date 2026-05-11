@@ -1,3 +1,5 @@
+#import <Foundation/Foundation.h>
+
 static inline NSDictionary *GetAllTranslations(NSString *code) {
     if ([code isEqualToString:@"ar"]) {
         return @{
@@ -205,6 +207,9 @@ static inline NSDictionary *GetAllTranslations(NSString *code) {
             @"ANTI_SCREENSHOT_SUBTITLE": @"Take screenshots in secret chats and protected channels without sending a notification to the other person.",
             @"ANTI_SELF_DESTRUCT_TITLE": @"View Disappearing Media Freely",
             @"ANTI_SELF_DESTRUCT_SUBTITLE": @"Open one-time and disappearing photos/videos without triggering the self-destruct timer. The media stays visible locally.",
+            @"CONFIRM_CALLS_TITLE": @"Confirm Calls",
+            @"CONFIRM_CALLS_SUBTITLE": @"Show a confirmation dialog before starting a voice or video call to prevent accidental calls.",
+
             @"FIX_FILE_PICKER_TITLE": @"Fix File Picker",
             @"FIX_FILE_PICKER_SUBTITLE": @"Fixes the issue where you can't pick files from the Files app on sideloaded versions.",
             @"CLEAR_FILE_PICKER_CACHE_TITLE": @"Clear File Picker Cache",
@@ -500,6 +505,9 @@ static inline NSDictionary *GetAllTranslations(NSString *code) {
             @"ANTI_SCREENSHOT_SUBTITLE": @"Делайте скриншоты в секретных чатах и защищённых каналах — без уведомления собеседника.",
             @"ANTI_SELF_DESTRUCT_TITLE": @"Просмотр исчезающих медиафайлов",
             @"ANTI_SELF_DESTRUCT_SUBTITLE": @"Открывайте одноразовые и исчезающие фото/видео без запуска таймера самоуничтожения. Медиафайл остаётся доступным локально.",
+            @"CONFIRM_CALLS_TITLE": @"Подтверждение звонков",
+            @"CONFIRM_CALLS_SUBTITLE": @"Показывать диалог подтверждения перед началом голосового или видеозвонка для предотвращения случайных звонков.",
+
             @"FIX_FILE_PICKER_TITLE": @"Исправить выбор файлов",
             @"FIX_FILE_PICKER_SUBTITLE": @"Исправляет ошибку, из-за которой невозможно выбрать файлы из приложения 'Файлы' на установленных вручную версиях",
             @"CLEAR_FILE_PICKER_CACHE_TITLE": @"Очистить кэш выбора файлов",
