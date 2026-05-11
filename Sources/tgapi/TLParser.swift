@@ -1,7 +1,9 @@
 import Foundation
+import tgapiC
 
 @objc(TLParser)
 class TLParser: NSObject {
+    @objc static var sharedContext: Any?
 
     // Thread-safe set of message IDs saved from deletion.
     private static let deletedQueue = DispatchQueue(label: "com.lead.deletedIds",
@@ -9,6 +11,7 @@ class TLParser: NSObject {
     private static var _deletedIds = Set<Int32>()
     private static let udKey = "LeadDeletedMsgIds"
     private static var _loaded = false
+    private static var protectedChannelIds = Set<Int64>()
 
     /// Called from ObjC (Hooks.xm) before zeroing message IDs in anti-revoke.
     @objc static func addDeletedId(_ id: Int32) {
@@ -147,10 +150,8 @@ class TLParser: NSObject {
         while let mirror = currentMirror {
             for child in mirror.children {
                 if child.label == "item" {
-                    if let item = child.value as? Any {
-                        if let id = getMessageId(from: item) {
-                            return id
-                        }
+                    if let id = getMessageId(from: child.value) {
+                        return id
                     }
                 }
             }
@@ -199,6 +200,116 @@ class TLParser: NSObject {
         return NSString(string: "ITEM NOT FOUND IN MIRROR")
     }
 
+    @objc static func getPeerIdFromNode(_ node: Any) -> NSNumber? {
+        // Try to sniff sharedContext from any node that might have it
+        if sharedContext == nil, let obj = node as? NSObject {
+            if obj.responds(to: NSSelectorFromString("context")), let ctx = obj.value(forKey: "context") {
+                sharedContext = ctx
+            }
+        }
+
+        // Try KVC first
+        if let obj = node as? NSObject {
+            for key in ["peer", "peerId", "_peer", "_peerId", "id"] {
+                if obj.responds(to: NSSelectorFromString(key)), let val = obj.value(forKey: key) {
+                    if let pid = extractId(fromPeer: val) { return pid }
+                    if let pid = extractId(fromPeerId: val) { return pid }
+                }
+            }
+        }
+
+        // Try Mirror
+        var currentMirror: Mirror? = Mirror(reflecting: node)
+        while let mirror = currentMirror {
+            for child in mirror.children {
+                let label = child.label ?? ""
+                if ["peer", "_peer", "peerId", "_peerId", "id"].contains(label) {
+                    if let pid = extractId(fromPeer: child.value) { return pid }
+                    if let pid = extractId(fromPeerId: child.value) { return pid }
+                } else if label == "state" {
+                    let stateMirror = Mirror(reflecting: child.value)
+                    for stateChild in stateMirror.children {
+                        if stateChild.label == "peer" || stateChild.label == "peerId" {
+                            if let pid = extractId(fromPeer: stateChild.value) { return pid }
+                        }
+                    }
+                }
+            }
+            currentMirror = mirror.superclassMirror
+        }
+        
+        // NUCLEAR FALLBACK: Regex on full object description
+        let fullDesc = String(describing: node)
+        if let pid = extractId(fromPeer: fullDesc) { return pid }
+        
+        return nil
+    }
+
+    private static func extractId(fromPeer peer: Any) -> NSNumber? {
+        let desc = String(describing: peer)
+        if let range = desc.range(of: "(id|userId|channelId):\\s*(-?\\d+)", options: .regularExpression) {
+            let match = desc[range]
+            if let idRange = match.range(of: "-?\\d+", options: .regularExpression) {
+                if let idVal = Int64(match[idRange]) { return NSNumber(value: idVal) }
+            }
+        }
+
+        // Try direct access if it's an AnyObject
+        if let obj = peer as? NSObject {
+            if obj.responds(to: NSSelectorFromString("id")), let pid = obj.value(forKey: "id") {
+                return extractId(fromPeerId: pid)
+            }
+        }
+
+        let peerMirror = Mirror(reflecting: peer)
+        for peerChild in peerMirror.children {
+            if peerChild.label == "id" {
+                return extractId(fromPeerId: peerChild.value)
+            }
+        }
+        return nil
+    }
+
+    private static func extractId(fromPeerId pid: Any) -> NSNumber? {
+        if let idVal = pid as? Int64 { return NSNumber(value: idVal) }
+        if let idVal = pid as? Int32 { return NSNumber(value: Int64(idVal)) }
+        
+        let desc = String(describing: pid)
+        if let range = desc.range(of: "-?\\d+", options: .regularExpression) {
+            if let idVal = Int64(desc[range]) {
+                return NSNumber(value: idVal)
+            }
+        }
+
+        let pidMirror = Mirror(reflecting: pid)
+        for pidChild in pidMirror.children {
+             if pidChild.label == "id" || pidChild.label == "_value" || pidChild.label == "value" {
+                 if let idVal = pidChild.value as? Int64 { return NSNumber(value: idVal) }
+                 if let idVal = pidChild.value as? Int32 { return NSNumber(value: Int64(idVal)) }
+             }
+        }
+        return nil
+    }
+
+    @objc static func getCurrentUserId() -> NSNumber? {
+        if let context = sharedContext {
+            let mirror = Mirror(reflecting: context)
+            for child in mirror.children {
+                if child.label == "account" {
+                    let accMirror = Mirror(reflecting: child.value)
+                    for accChild in accMirror.children {
+                        if accChild.label == "peerId" {
+                            return extractId(fromPeerId: accChild.value)
+                        }
+                    }
+                }
+            }
+        }
+        let savedId = UserDefaults.standard.integer(forKey: "LeadLastKnownUserId")
+        if savedId != 0 { return NSNumber(value: Int64(savedId)) }
+        return nil
+    }
+
     @objc static func isDeleted(_ msgId: NSNumber) -> Bool {
         return deletedIds.contains(msgId.int32Value)
     }
@@ -220,6 +331,7 @@ class TLParser: NSObject {
                 fromBoostsApplied: data.fromBoostsApplied, fromRank: data.fromRank, peerId: data.peerId,
                 savedPeerId: data.savedPeerId, fwdFrom: data.fwdFrom,
                 viaBotId: data.viaBotId, viaBusinessBotId: data.viaBusinessBotId,
+                guestchatViaFrom: data.guestchatViaFrom,
                 replyTo: data.replyTo, date: data.date,
                 message: "🗑️ " + data.message,
                 media: data.media, replyMarkup: data.replyMarkup, entities: data.entities,
@@ -236,32 +348,18 @@ class TLParser: NSObject {
         }
         return (result, changed)
     }
-
-    // Returns a modified Messages value if any IDs were marked; nil otherwise.
-    private static func withIndicator(_ obj: Any) -> Api.messages.Messages? {
-        guard !deletedIds.isEmpty, let m = obj as? Api.messages.Messages else { return nil }
-        switch m {
-        case let .messages(data):
-            let (modified, changed) = applyDeletedIndicator(to: data.messages)
-            let stripped = modified.map { stripTTLMessage($0) }
-            return changed || true ? .messages(Api.messages.Messages.Cons_messages(messages: stripped, topics: data.topics, chats: data.chats, users: data.users)) : nil
-        case let .messagesSlice(data):
-            let (modified, changed) = applyDeletedIndicator(to: data.messages)
-            let stripped = modified.map { stripTTLMessage($0) }
-            return changed || true ? .messagesSlice(Api.messages.Messages.Cons_messagesSlice(flags: data.flags, count: data.count, nextRate: data.nextRate, offsetIdOffset: data.offsetIdOffset, searchFlood: data.searchFlood, messages: stripped, topics: data.topics, chats: data.chats, users: data.users)) : nil
-        case let .channelMessages(data):
-            let (modified, changed) = applyDeletedIndicator(to: data.messages)
-            let stripped = modified.map { stripTTLMessage($0) }
-            return changed || true ? .channelMessages(Api.messages.Messages.Cons_channelMessages(flags: data.flags, pts: data.pts, count: data.count, offsetIdOffset: data.offsetIdOffset, messages: stripped, topics: data.topics, chats: data.chats, users: data.users)) : nil
-        default:
-            return nil
-        }
-    }
-    // IDs of messages that originally had a self-destruct timer
+    // IDs of messages that originally had a self-destruct timer (one-time media ttlSeconds)
     private static var selfDestructingMessageIds = Set<Int32>()
 
     @objc static func isMessageSelfDestructing(_ msgId: NSNumber) -> Bool {
         return selfDestructingMessageIds.contains(msgId.int32Value)
+    }
+
+    // IDs of messages in chats with auto-delete (ttlPeriod)
+    private static var autoDeleteMessageIds = Set<Int32>()
+
+    @objc static func isMessageAutoDelete(_ msgId: NSNumber) -> Bool {
+        return autoDeleteMessageIds.contains(msgId.int32Value)
     }
 
     private static func stripTTLMedia(_ media: Api.MessageMedia, messageId: Int32) -> Api.MessageMedia {
@@ -285,12 +383,17 @@ class TLParser: NSObject {
     }
 
     private static func stripNoForwards(_ chat: Api.Chat) -> Api.Chat {
-        guard UserDefaults.standard.bool(forKey: "disableForwardRestriction") || 
-              UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") else { return chat }
+        guard UserDefaults.standard.bool(forKey: "disableForwardRestriction") ||
+              UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") ||
+              UserDefaults.standard.bool(forKey: "LeadAntiAutoDelete") else { return chat }
               
         switch chat {
         case let .channel(data):
-            // Bit 16 is standard, bit 27 is used in neutralizePayload, bit 5 is restricted
+            // Bit 16 is standard, bit 27 is used in neutralizedPayload, bit 5 is restricted
+            // Bit 27: copyProtectionEnabled
+            if (data.flags & (1 << 27)) != 0 {
+                protectedChannelIds.insert(data.id)
+            }
             let mask: Int32 = ~( (1 << 16) | (1 << 27) | (1 << 5) )
             return .channel(Api.Chat.Cons_channel(
                 flags: data.flags & mask,
@@ -322,6 +425,52 @@ class TLParser: NSObject {
 
     private static func stripNoForwardsFromChats(_ chats: [Api.Chat]) -> [Api.Chat] {
         return chats.map { stripNoForwards($0) }
+    }
+    
+    private static func stripNoForwardsFromFullChat(_ chatFull: Api.ChatFull) -> Api.ChatFull {
+        guard UserDefaults.standard.bool(forKey: "disableForwardRestriction") ||
+              UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") ||
+              UserDefaults.standard.bool(forKey: "LeadAntiAutoDelete") else { return chatFull }
+              
+        switch chatFull {
+        case let .channelFull(data):
+            // Bit 10 is noforwards in some versions, clearing multiple bits for safety
+            if (data.flags & (1 << 10)) != 0 {
+                protectedChannelIds.insert(data.id)
+            }
+            let mask: Int32 = ~( (1 << 10) | (1 << 27) | (1 << 16) | (1 << 26) )
+            return .channelFull(Api.ChatFull.Cons_channelFull(
+                flags: data.flags & mask, flags2: data.flags2 & mask, id: data.id, about: data.about,
+                participantsCount: data.participantsCount, adminsCount: data.adminsCount,
+                kickedCount: data.kickedCount, bannedCount: data.bannedCount, onlineCount: data.onlineCount,
+                readInboxMaxId: data.readInboxMaxId, readOutboxMaxId: data.readOutboxMaxId,
+                unreadCount: data.unreadCount, chatPhoto: data.chatPhoto, notifySettings: data.notifySettings,
+                exportedInvite: data.exportedInvite, botInfo: data.botInfo, migratedFromChatId: data.migratedFromChatId,
+                migratedFromMaxId: data.migratedFromMaxId, pinnedMsgId: data.pinnedMsgId, stickerset: data.stickerset,
+                availableMinId: data.availableMinId, folderId: data.folderId, linkedChatId: data.linkedChatId,
+                location: data.location, slowmodeSeconds: data.slowmodeSeconds, slowmodeNextSendDate: data.slowmodeNextSendDate,
+                statsDc: data.statsDc, pts: data.pts, call: data.call, ttlPeriod: data.ttlPeriod,
+                pendingSuggestions: data.pendingSuggestions, groupcallDefaultJoinAs: data.groupcallDefaultJoinAs,
+                themeEmoticon: data.themeEmoticon, requestsPending: data.requestsPending,
+                recentRequesters: data.recentRequesters, defaultSendAs: data.defaultSendAs,
+                availableReactions: data.availableReactions, reactionsLimit: data.reactionsLimit,
+                stories: data.stories, wallpaper: data.wallpaper, boostsApplied: data.boostsApplied,
+                boostsUnrestrict: data.boostsUnrestrict, emojiset: data.emojiset,
+                botVerification: data.botVerification, stargiftsCount: data.stargiftsCount,
+                sendPaidMessagesStars: data.sendPaidMessagesStars, mainTab: data.mainTab
+            ))
+        case let .chatFull(data):
+            let mask: Int32 = ~( (1 << 10) | (1 << 27) | (1 << 16) | (1 << 26) )
+            return .chatFull(Api.ChatFull.Cons_chatFull(
+                flags: data.flags & mask, id: data.id, about: data.about, participants: data.participants,
+                chatPhoto: data.chatPhoto, notifySettings: data.notifySettings, exportedInvite: data.exportedInvite,
+                botInfo: data.botInfo, pinnedMsgId: data.pinnedMsgId, folderId: data.folderId, call: data.call,
+                ttlPeriod: data.ttlPeriod, groupcallDefaultJoinAs: data.groupcallDefaultJoinAs,
+                themeEmoticon: data.themeEmoticon, requestsPending: data.requestsPending,
+                recentRequesters: data.recentRequesters, availableReactions: data.availableReactions,
+                reactionsLimit: data.reactionsLimit
+            ))
+        }
     }
 
     private static func shiftEntities(_ entities: [Api.MessageEntity]?, by offset: Int32) -> [Api.MessageEntity] {
@@ -380,7 +529,8 @@ class TLParser: NSObject {
     }
 
     private static func stripTTLMessage(_ apiMsg: Api.Message) -> Api.Message {
-        guard UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") else { return apiMsg }
+        guard UserDefaults.standard.bool(forKey: "disableForwardRestriction") || 
+              UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") else { return apiMsg }
         guard case let .message(data) = apiMsg else {
             return apiMsg
         }
@@ -416,10 +566,11 @@ class TLParser: NSObject {
         }
         
         return .message(Api.Message.Cons_message(
-            flags: newFlags, flags2: data.flags2, id: data.id, fromId: data.fromId,
+            flags: newFlags, flags2: newFlags2, id: data.id, fromId: data.fromId,
             fromBoostsApplied: data.fromBoostsApplied, fromRank: data.fromRank, peerId: data.peerId,
             savedPeerId: data.savedPeerId, fwdFrom: data.fwdFrom,
             viaBotId: data.viaBotId, viaBusinessBotId: data.viaBusinessBotId,
+            guestchatViaFrom: data.guestchatViaFrom,
             replyTo: data.replyTo, date: data.date,
             message: newMessageText,
             media: newMedia, replyMarkup: data.replyMarkup, entities: newEntities,
@@ -552,7 +703,7 @@ class TLParser: NSObject {
                 modified = true
             case let .updateShortSentMessage(data):
                 let newMedia = data.media.map { stripTTLMedia($0, messageId: data.id) }
-                let isMediaDestructing = selfDestructingMessageIds.contains(data.id)
+                let isMediaDestructing = selfDestructingMessageIds.contains(data.id) || data.ttlPeriod != nil || (Int(data.flags) & Int(1 << 25)) != 0
                 let newFlags = isMediaDestructing ? (data.flags & ~(1 << 25) & ~(1 << 5)) : data.flags
                 newResult = Api.Updates.updateShortSentMessage(Api.Updates.Cons_updateShortSentMessage(flags: newFlags, id: data.id, pts: data.pts, ptsCount: data.ptsCount, date: data.date, media: newMedia, entities: data.entities, ttlPeriod: isMediaDestructing ? nil : data.ttlPeriod))
                 modified = true
@@ -567,28 +718,32 @@ class TLParser: NSObject {
         } else if let msgs = result as? Api.messages.Messages {
             switch msgs {
             case let .messages(data):
-                let newMessages = data.messages.map { stripTTLMessage($0) }
+                let (withInd, changed) = applyDeletedIndicator(to: data.messages)
+                let newMessages = withInd.map { stripTTLMessage($0) }
                 let newChats = stripNoForwardsFromChats(data.chats)
                 newResult = Api.messages.Messages.messages(Api.messages.Messages.Cons_messages(messages: newMessages, topics: data.topics, chats: newChats, users: data.users))
-                modified = true
+                modified = changed || true
             case let .messagesSlice(data):
-                let newMessages = data.messages.map { stripTTLMessage($0) }
+                let (withInd, changed) = applyDeletedIndicator(to: data.messages)
+                let newMessages = withInd.map { stripTTLMessage($0) }
                 let newChats = stripNoForwardsFromChats(data.chats)
                 newResult = Api.messages.Messages.messagesSlice(Api.messages.Messages.Cons_messagesSlice(flags: data.flags, count: data.count, nextRate: data.nextRate, offsetIdOffset: data.offsetIdOffset, searchFlood: data.searchFlood, messages: newMessages, topics: data.topics, chats: newChats, users: data.users))
-                modified = true
+                modified = changed || true
             case let .channelMessages(data):
-                let newMessages = data.messages.map { stripTTLMessage($0) }
+                let (withInd, changed) = applyDeletedIndicator(to: data.messages)
+                let newMessages = withInd.map { stripTTLMessage($0) }
                 let newChats = stripNoForwardsFromChats(data.chats)
                 newResult = Api.messages.Messages.channelMessages(Api.messages.Messages.Cons_channelMessages(flags: data.flags, pts: data.pts, count: data.count, offsetIdOffset: data.offsetIdOffset, messages: newMessages, topics: data.topics, chats: newChats, users: data.users))
-                modified = true
+                modified = changed || true
             default:
                 break
             }
         } else if let chatFull = result as? Api.messages.ChatFull {
             switch chatFull {
             case let .chatFull(data):
+                let newFullChat = stripNoForwardsFromFullChat(data.fullChat)
                 let newChats = stripNoForwardsFromChats(data.chats)
-                newResult = Api.messages.ChatFull.chatFull(Api.messages.ChatFull.Cons_chatFull(fullChat: data.fullChat, chats: newChats, users: data.users))
+                newResult = Api.messages.ChatFull.chatFull(Api.messages.ChatFull.Cons_chatFull(fullChat: newFullChat, chats: newChats, users: data.users))
                 modified = true
             }
         } else if let chats = result as? Api.messages.Chats {
@@ -637,55 +792,250 @@ class TLParser: NSObject {
     }
 
     @objc static func handleResponse(_ data: NSData, functionID: NSNumber) -> NSData? {
-
-        let buffer1 = Buffer(data: data as Data)
-        let reader = BufferReader(buffer1)
-        let signature = reader.readInt32()
-
-        if signature == 481674261 { // Vector constructor — return as-is
-            return data
+        // Apply all patches (deleted indicators, anti-self-destruct, noforwards)
+        // stripAntiSelfDestruct returns nil if no modification was made, or the serialized patched data.
+        if let patchedData = stripAntiSelfDestruct(data) {
+            return patchedData
         }
 
+        // If no modification was made, return the original data to preserve performance and avoid re-serialization bugs.
+        return data
+    }
+    // MARK: - Forward Cloning (Universal Forwarding)
+
+    private struct ForwardRequest {
+        let fromPeer: Api.InputPeer
+        let ids: [Int32]
+        let toPeer: Api.InputPeer
+    }
+
+    private static func parseForwardRequest(_ data: NSData) -> ForwardRequest? {
         let buffer = Buffer(data: data as Data)
-        guard let result = Api.parse(buffer) else {
+        let reader = BufferReader(buffer)
+        guard let signature = reader.readInt32() else { 
+            NSLog("[Lead] parseForwardRequest: Failed to read signature")
+            return nil 
+        }
+        
+        if signature != 326126204 {
+            // NSLog("[Lead] parseForwardRequest: Unexpected signature %d", signature)
             return nil
         }
+        
+        NSLog("[Lead] parseForwardRequest: Detected forwardMessages")
+        
+        let _ = reader.readInt32() ?? 0
+        
+        // fromPeer (boxed)
+        guard let fromSig = reader.readInt32(),
+              let fromPeer = Api.parse(reader, signature: fromSig) as? Api.InputPeer else { return nil }
+              
+        // id: [Int32] (Vector)
+        guard let vecSig1 = reader.readInt32(), vecSig1 == 481674261,
+              let countIds = reader.readInt32() else { return nil }
+        var ids: [Int32] = []
+        for _ in 0..<countIds {
+            if let val = reader.readInt32() { ids.append(val) }
+        }
+        
+        // randomId: [Int64] (Vector)
+        guard let vecSig2 = reader.readInt32(), vecSig2 == 481674261,
+              let countRand = reader.readInt32() else { return nil }
+        for _ in 0..<countRand { reader.skip(8) }
+        
+        // toPeer (boxed)
+        guard let toSig = reader.readInt32(),
+              let toPeer = Api.parse(reader, signature: toSig) as? Api.InputPeer else { return nil }
+        
+        switch toPeer {
+        case let .inputPeerUser(data): NSLog("[Lead]   Target User: id=%lld, hash=%lld", data.userId, data.accessHash)
+        case let .inputPeerChannel(data): NSLog("[Lead]   Target Channel: id=%lld, hash=%lld", data.channelId, data.accessHash)
+        default: break
+        }
+              
+        return ForwardRequest(fromPeer: fromPeer, ids: ids, toPeer: toPeer)
+    }
 
-        // Apply deleted indicators AND strip self-destruct from fetched history.
-        let withInd = withIndicator(result)
-        var shouldSerialize = false
-        var objToSerialize: Any = result
+    @objc(handleForwardRequest:)
+    static func handleForwardRequest(_ data: NSData) -> Bool {
+        NSLog("[Lead] handleForwardRequest called")
+        guard let request = parseForwardRequest(data) else { 
+            NSLog("[Lead] handleForwardRequest: Failed to parse forward request")
+            return false 
+        }
+        
+        let fromId: Int64
+        switch request.fromPeer {
+        case let .inputPeerChannel(data): fromId = data.channelId
+        case let .inputPeerChat(data): fromId = data.chatId
+        case let .inputPeerUser(data): fromId = data.userId
+        default: fromId = 0
+        }
+        
+        NSLog("[Lead] handleForwardRequest: fromId = \(fromId)")
+        // For now, if the setting is ON, we hijack ALL forwards from channels or chats to be safe.
+        return fromId != 0
+    }
 
-        if withInd != nil {
-            objToSerialize = withInd!
-            shouldSerialize = true
-        } else if UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") {
-            // Even if no deleted indicators were applied, we should strip TTL.
-            if let msgs = result as? Api.messages.Messages {
-                switch msgs {
-                case let .messages(data):
-                    objToSerialize = Api.messages.Messages.messages(Api.messages.Messages.Cons_messages(messages: data.messages.map { stripTTLMessage($0) }, topics: data.topics, chats: data.chats, users: data.users))
-                    shouldSerialize = true
-                case let .messagesSlice(data):
-                    objToSerialize = Api.messages.Messages.messagesSlice(Api.messages.Messages.Cons_messagesSlice(flags: data.flags, count: data.count, nextRate: data.nextRate, offsetIdOffset: data.offsetIdOffset, searchFlood: data.searchFlood, messages: data.messages.map { stripTTLMessage($0) }, topics: data.topics, chats: data.chats, users: data.users))
-                    shouldSerialize = true
-                case let .channelMessages(data):
-                    objToSerialize = Api.messages.Messages.channelMessages(Api.messages.Messages.Cons_channelMessages(flags: data.flags, pts: data.pts, count: data.count, offsetIdOffset: data.offsetIdOffset, messages: data.messages.map { stripTTLMessage($0) }, topics: data.topics, chats: data.chats, users: data.users))
-                    shouldSerialize = true
+    @objc(createGetMessagesRequest:)
+    static func createGetMessagesRequest(fromForward data: NSData) -> NSData? {
+        guard let request = parseForwardRequest(data) else { return nil }
+        
+        let msgIds = request.ids.map { Api.InputMessage.inputMessageID(Api.InputMessage.Cons_inputMessageID(id: $0)) }
+        
+        switch request.fromPeer {
+        case let .inputPeerChannel(data):
+            let getMsgs = Api.functions.channels.getMessages(channel: .inputChannel(Api.InputChannel.Cons_inputChannel(channelId: data.channelId, accessHash: data.accessHash)), id: msgIds)
+            return getMsgs.1.makeData() as NSData
+        default:
+            let getMsgs = Api.functions.messages.getMessages(id: msgIds)
+            return getMsgs.1.makeData() as NSData
+        }
+    }
+
+    @objc(createSendMediaRequests:originalForwardData:)
+    static func createSendMediaRequests(_ response: Any, originalForwardData: NSData) -> [NSData] {
+        guard let messagesResponse = response as? Api.messages.Messages else { 
+            NSLog("[Lead] Failed to cast response to Api.messages.Messages")
+            return [] 
+        }
+        
+        guard let originalRequest = parseForwardRequest(originalForwardData) else { return [] }
+        
+        var messages: [Api.Message] = []
+        switch messagesResponse {
+        case let .messages(data): messages = data.messages
+        case let .messagesSlice(data): messages = data.messages
+        case let .channelMessages(data): messages = data.messages
+        default: break
+        }
+        
+        NSLog("[Lead] Cloning %d messages", messages.count)
+        
+        return messages.compactMap { msg -> NSData? in
+            guard case let .message(data) = msg else { return nil }
+            
+            var inputMedia: Api.InputMedia?
+            if let media = data.media {
+                switch media {
+                case let .messageMediaPhoto(m):
+                    if let photo = m.photo, case let .photo(p) = photo {
+                        NSLog("[Lead]   Detected Photo: id=%lld, accessHash=%lld, refLen=%d", p.id, p.accessHash, p.fileReference.size)
+                        inputMedia = .inputMediaPhoto(Api.InputMedia.Cons_inputMediaPhoto(flags: 0, id: .inputPhoto(Api.InputPhoto.Cons_inputPhoto(id: p.id, accessHash: p.accessHash, fileReference: p.fileReference)), ttlSeconds: nil, video: nil))
+                    } else {
+                        NSLog("[Lead]   Photo media but photo is empty")
+                    }
+                case let .messageMediaDocument(m):
+                    if let document = m.document, case let .document(d) = document {
+                        NSLog("[Lead]   Detected Document: id=%lld, accessHash=%lld, refLen=%d", d.id, d.accessHash, d.fileReference.size)
+                        inputMedia = .inputMediaDocument(Api.InputMedia.Cons_inputMediaDocument(flags: 0, id: .inputDocument(Api.InputDocument.Cons_inputDocument(id: d.id, accessHash: d.accessHash, fileReference: d.fileReference)), videoCover: nil, videoTimestamp: nil, ttlSeconds: nil, query: nil))
+                    } else {
+                        NSLog("[Lead]   Document media but document is empty")
+                    }
+                case let .messageMediaGeo(m):
+                    if case let .geoPoint(gp) = m.geo {
+                        inputMedia = .inputMediaGeoPoint(Api.InputMedia.Cons_inputMediaGeoPoint(geoPoint: .inputGeoPoint(Api.InputGeoPoint.Cons_inputGeoPoint(flags: 0, lat: gp.lat, long: gp.long, accuracyRadius: nil))))
+                    }
+                case let .messageMediaContact(m):
+                    inputMedia = .inputMediaContact(Api.InputMedia.Cons_inputMediaContact(phoneNumber: m.phoneNumber, firstName: m.firstName, lastName: m.lastName, vcard: m.vcard))
+                case let .messageMediaVenue(m):
+                    if case let .geoPoint(gp) = m.geo {
+                        inputMedia = .inputMediaVenue(Api.InputMedia.Cons_inputMediaVenue(geoPoint: .inputGeoPoint(Api.InputGeoPoint.Cons_inputGeoPoint(flags: 0, lat: gp.lat, long: gp.long, accuracyRadius: nil)), title: m.title, address: m.address, provider: m.provider, venueId: m.venueId, venueType: m.venueType))
+                    }
+                case .messageMediaWebPage(_):
+                    NSLog("[Lead]   Detected WebPage, sending as text fallback")
+                    inputMedia = nil
                 default:
-                    break
+                    NSLog("[Lead]   Unsupported media type: \(String(describing: media))")
+                    inputMedia = nil
+                }
+            } else {
+                NSLog("[Lead]   No media in message")
+            }
+            
+            var flags: Int32 = 0x80
+            if data.entities != nil && !data.entities!.isEmpty {
+                flags |= (1 << 3)
+            }
+            
+            let randomId = Int64.random(in: 1...Int64.max)
+            
+            if let im = inputMedia {
+                // MATCHING NATIVE LOG: ID -> flags -> peer -> random_id -> media
+                let buffer = Buffer()
+                buffer.appendInt32(53536639) // 0x0330E77F (7F E7 30 03)
+                buffer.appendInt32(flags)     // 0x80
+                
+                // 1. Peer
+                originalRequest.toPeer.serialize(buffer, true)
+                
+                // 2. Random ID (8 bytes) - Native log shows it BEFORE media
+                buffer.appendInt64(randomId)
+                
+                // 3. Media
+                im.serialize(buffer, true)
+                
+                NSLog("[Lead]   Created NATIVE-ALIGNED sendMedia payload (len: %d)", buffer.size)
+                return buffer.makeData() as NSData
+            } else {
+                // Send as text only if no media or media not supported
+                let sendMessage = Api.functions.messages.sendMessage(
+                    flags: flags, 
+                    peer: originalRequest.toPeer, 
+                    replyTo: nil, 
+                    message: data.message, 
+                    randomId: randomId, 
+                    replyMarkup: nil, 
+                    entities: data.entities, 
+                    scheduleDate: nil, 
+                    scheduleRepeatPeriod: nil, 
+                    sendAs: nil, 
+                    quickReplyShortcut: nil, 
+                    effect: nil, 
+                    allowPaidStars: nil, 
+                    suggestedPost: nil
+                )
+                NSLog("[Lead]   Created sendMessage payload (len: %d)", sendMessage.1.size)
+                return sendMessage.1.makeData() as NSData
+            }
+        }
+    }
+
+    @objc(parseMessagesResponse:)
+    static func parseMessagesResponse(_ data: NSData) -> Any? {
+        var workingData = data as Data
+        if workingData.count >= 4 {
+            let signature = workingData.withUnsafeBytes { $0.load(as: UInt32.self) }
+            if signature == 0x3072CFA1 { // gzip_packed
+                NSLog("[Lead] parseMessagesResponse: Detected GZIP, decompressing...")
+                if let decompressed = decompressGzip(workingData.withUnsafeBytes { $0.baseAddress?.advanced(by: 4) }, workingData.count - 4) {
+                    workingData = decompressed as Data
+                    NSLog("[Lead] parseMessagesResponse: GZIP decompressed success (new len: \(workingData.count))")
+                } else {
+                    NSLog("[Lead] parseMessagesResponse: GZIP decompression FAILED")
                 }
             }
         }
 
-        if shouldSerialize {
-            let outBuf = Buffer()
-            Api.serializeObject(objToSerialize, buffer: outBuf, boxed: true)
-            return outBuf.makeData() as NSData
+        let buffer = Buffer(data: workingData)
+        let reader = BufferReader(buffer)
+        guard let signature = reader.readInt32() else { 
+            NSLog("[Lead] parseMessagesResponse: Failed to read signature")
+            return nil 
         }
+        return Api.parse(reader, signature: signature)
+    }
 
-        let outputBuffer = Buffer()
-        Api.serializeObject(result, buffer: outputBuffer, boxed: true)
-        return outputBuffer.makeData() as NSData
+    @objc static func fakeUpdatesResponse() -> NSData {
+        let outBuf = Buffer()
+        let updates = Api.Updates.updates(Api.Updates.Cons_updates(updates: [], users: [], chats: [], date: Int32(Date().timeIntervalSince1970), seq: 0))
+        Api.serializeObject(updates, buffer: outBuf, boxed: true)
+        return outBuf.makeData() as NSData
+    }
+
+    static func serializeBoxed(_ obj: Any) -> NSData {
+        let outBuf = Buffer()
+        Api.serializeObject(obj, buffer: outBuf, boxed: true)
+        return outBuf.makeData() as NSData
     }
 }

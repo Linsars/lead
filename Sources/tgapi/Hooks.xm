@@ -1,21 +1,81 @@
 #import "Headers.h"
 #include <zlib.h>
+#import <os/log.h>
 
-// Forward declaration — defined later in this file, used inside hooked_block
 static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, BOOL saveRestricted, BOOL antiSelfDestruct);
+@class MTRequest;
+// static void triggerCloning(NSData *originalForwardData, id requestMessageService, id metadata, id shortMetadata);
+
+#define kForwardMessages 326126204
+#define kSendMedia 53536639
+#define kSendMultiMedia 469278068
+static __weak id sharedRequestMessageService = nil;
 
 #define kChannelsReadHistory -871347913
+
+#define kGzipPackedCtor               ((int32_t)0x3072CFA1)
+
+static void logPublic(NSString *format, ...) {
+    va_list args;
+    va_start(args, format);
+    NSString *str = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+    os_log_with_type(OS_LOG_DEFAULT, OS_LOG_TYPE_DEFAULT, "%{public}s", [str UTF8String]);
+}
+
+static NSString *hexString(NSData *data) {
+    if (!data) return @"nil";
+    const unsigned char *dataBuffer = (const unsigned char *)[data bytes];
+    if (!dataBuffer) return @"empty";
+    NSUInteger dataLength  = [data length];
+    NSMutableString *hexString  = [NSMutableString stringWithCapacity:(dataLength * 2)];
+    for (int i = 0; i < dataLength; ++i) {
+        [hexString appendFormat:@"%02X", (unsigned int)dataBuffer[i]];
+    }
+    return [hexString copy];
+}
 
 %hook MTRequest
 %property (nonatomic, strong) NSData *fakeData;
 %property (nonatomic, strong) NSNumber *functionID;
+%property (nonatomic, strong) NSData *payload;
 
 - (void)setPayload:(NSData *)payload metadata:(id)metadata shortMetadata:(id)shortMetadata responseParser:(id (^)(NSData *))responseParser {
+	self.payload = payload;
 	
-	// Extract Function id 
-	int32_t functionID;
-	[payload getBytes:&functionID length:4];
+	// Extract Function id, handling GZIP compression if needed
+    NSData *workingData = payload;
+	int32_t functionID = 0;
+    if (payload.length >= 4) {
+        memcpy(&functionID, payload.bytes, 4);
+        if (functionID == kGzipPackedCtor && payload.length >= 8) {
+            const uint8_t *b = (const uint8_t *)payload.bytes;
+            uint32_t offset = 4;
+            uint32_t gzipLen = 0;
+            uint8_t first = b[offset];
+            if (first < 0xFE) {
+                gzipLen = first;
+                offset += 1;
+            } else if (first == 0xFE && payload.length > offset + 3) {
+                gzipLen = (uint32_t)b[offset+1] | ((uint32_t)b[offset+2] << 8) | ((uint32_t)b[offset+3] << 16);
+                offset += 4;
+            }
+            if (gzipLen > 0 && offset + gzipLen <= payload.length) {
+                NSData *inner = decompressGzip(b + offset, gzipLen);
+                if (inner) {
+                    workingData = inner;
+                    if (inner.length >= 4) {
+                        memcpy(&functionID, inner.bytes, 4);
+                    }
+                }
+            }
+        }
+    }
 	self.functionID = [NSNumber numberWithInt:functionID];
+	
+    if (functionID == kForwardMessages) {
+        logPublic(@"[Lead] setPayload: kForwardMessages (%d) detected. Data len: %lu", functionID, (unsigned long)payload.length);
+    }
 	
 	id(^hooked_block)(NSData *) = ^(NSData *inputData) {
 		NSNumber *functionIDNumber = [NSNumber numberWithUnsignedInt:functionID];
@@ -29,33 +89,43 @@ static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, B
 			if (cleared) toUse = cleared;
 		}
 
+        // NO ADS: Force empty response for sponsored messages
+        if (functionID == kGetSponsoredMessages && [[NSUserDefaults standardUserDefaults] boolForKey:kDisableAllAds]) {
+            uint8_t emptyHeader[] = {0x0F, 0x49, 0x39, 0x18}; // messages.sponsoredMessagesEmpty#1839490f
+            toUse = [NSData dataWithBytes:emptyHeader length:sizeof(emptyHeader)];
+            logPublic(@"[Lead] getSponsoredMessages response HIJACKED with empty payload");
+        }
+
 		return responseParser(toUse);
 	};
 	
 	switch (functionID) {
 		case kAccountUpdateOnlineStatus:
-		   handleOnlineStatus(self, payload);
+		   handleOnlineStatus(self, workingData);
 		   break;
 		case kMessagesSetTypingAction:
-		   handleSetTyping(self, payload);
+		   handleSetTyping(self, workingData);
 		   break;
 		case kMessagesReadHistory:
-		   handleMessageReadReceipt(self, payload);
+		   handleMessageReadReceipt(self, workingData);
 		   break;
 		case kStoriesReadStories:
-		   handleStoriesReadReceipt(self, payload);
+		   handleStoriesReadReceipt(self, workingData);
 		   break;
 		case kGetSponsoredMessages:
-		   handleGetSponsoredMessages(self, payload);
+		   handleGetSponsoredMessages(self, workingData);
 		   break;
 		case kChannelsReadHistory:
-		   handleChannelsReadReceipt(self, payload);
+		   handleChannelsReadReceipt(self, workingData);
 		   break;
 		case kSendScreenshotNotification:
-		   handleSendScreenshotNotification(self, payload);
+		   handleSendScreenshotNotification(self, workingData);
 		   break;
 		case kMessagesReadMessageContents:
-		   handleReadMessageContents(self, payload);
+		   handleReadMessageContents(self, workingData);
+		   break;
+		case kForwardMessages:
+		   NSLog(@"[Lead] setPayload: kForwardMessages (326126204) detected. Data len: %lu", (unsigned long)workingData.length);
 		   break;
 		default:
 		   break;
@@ -76,23 +146,68 @@ static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, B
 %hook MTRequestMessageService
 
 - (void)addRequest:(MTRequest *)request {
+	sharedRequestMessageService = self;
+    
+    // Debug logging
+    int32_t funcId = 0;
+    if (request.payload && request.payload.length >= 4) {
+        [request.payload getBytes:&funcId length:4];
+        if (funcId == 326126204) {
+            customLog2(@"[Lead] addRequest: forwardMessages (326126204) detected. kDisableForwardRestriction: %d", [[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]);
+        }
+    }
+
     if (request.fakeData) {
         @try {
              if (request.completed) {
                  NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970];
+                 MTRequestResponseInfo *info = [[%c(MTRequestResponseInfo) alloc] initWithNetworkType:1 timestamp:currentTime duration:0.045];
 
-                 MTRequestResponseInfo *info = [[%c(MTRequestResponseInfo) alloc] initWithNetworkType:1 
-					     timestamp:currentTime 
-						  duration:0.045
-					   ];
-					
-					id result = request.responseParser(request.fakeData);
-					request.completed(result, info, nil);
+                 NSLog(@"[Lead] addRequest: Faking SUCCESS for hijacked request (ID: %@) to clear UI", request.functionID);
+                 id result = request.responseParser(request.fakeData);
+                 request.completed(result, info, nil);
+             } else {
+                 NSLog(@"[Lead] addRequest: request.completed is NULL for hijacked request! This will cause infinite loading.");
              }
          } @catch (NSException *exception) {
-             customLog2(@"Exception in MTRequestMessageService hook: %@", exception);
+             NSLog(@"[Lead] Exception in MTRequestMessageService hook: %@", exception);
          }
         return;
+    }
+
+/*
+    if (request.functionID && [request.functionID intValue] == kForwardMessages) {
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
+            if ([NSClassFromString(@"TLParser") handleForwardRequest:request.payload]) {
+                 logPublic(@"[Lead] addRequest: Hijacking forwardMessages for cloning...");
+                 request.fakeData = [NSClassFromString(@"TLParser") fakeUpdatesResponse];
+                 
+                 id service = self;
+                 NSData *payload = [request.payload copy];
+                 id metadata = [request respondsToSelector:@selector(metadata)] ? request.metadata : nil;
+                 id shortMetadata = [request respondsToSelector:@selector(shortMetadata)] ? request.shortMetadata : nil;
+                 dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                     triggerCloning(payload, service, metadata, shortMetadata);
+                 });
+                 
+                 // Fake success immediately
+                 NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970];
+                 MTRequestResponseInfo *info = [[%c(MTRequestResponseInfo) alloc] initWithNetworkType:1 timestamp:currentTime duration:0.045];
+                 id result = request.responseParser(request.fakeData);
+                 dispatch_async(dispatch_get_main_queue(), ^{
+                     if (request.completed) request.completed(result, info, nil);
+                 });
+                 return;
+            }
+        }
+    }
+*/
+    
+    if (request.functionID && [request.functionID intValue] == kSendMedia) {
+        logPublic(@"[Lead] addRequest: Detected NATIVE sendMedia. Len: %lu, Hex: %@", (unsigned long)request.payload.length, hexString(request.payload));
+    }
+    if (request.functionID && [request.functionID intValue] == kSendMultiMedia) {
+        logPublic(@"[Lead] addRequest: Detected NATIVE sendMultiMedia. Len: %lu, Hex: %@", (unsigned long)request.payload.length, hexString(request.payload));
     }
     %orig;
 }
@@ -145,51 +260,20 @@ static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, B
 #define kUpdateDeleteChannelMessages -1020437742
 
 #define kUpdateEditMessage           -469536605
-#define kUpdateEditChannelMessage     457813544
+#define kUpdateEditChannelMessage     457133559
 
-#define kMessageConstructor          -356721331
+#define kMessageConstructor           988112002
 #define kChatConstructor              1103884886
-#define kChannelConstructor           1954681982
+#define kChannelConstructor           473084188
+
+#define kUpdateShortMessage           826001400
+#define kUpdateShortChatMessage       1299050149
+#define kUpdateShortSentMessage       -1877614335
 
 #define kVectorConstructor            481674261
-
-// Dummy constructor Telegram will not recognize — causes update to be silently skipped
 #define kDummyConstructor             0x00000001
 
 // gzip_packed#3072cfa1 — Telegram wraps large updates in gzip to save bandwidth
-#define kGzipPackedCtor               ((int32_t)0x3072CFA1)
-
-// ============================================================
-// decompressGzip — inflate a raw gzip/zlib byte stream.
-// Returns decompressed NSData, or nil on failure.
-// ============================================================
-static NSData *decompressGzip(const void *input, size_t inputLen) {
-    if (!input || inputLen < 2) return nil;
-
-    z_stream strm;
-    memset(&strm, 0, sizeof(strm));
-    strm.next_in  = (Bytef *)input;
-    strm.avail_in = (uInt)inputLen;
-
-    // 47 = 15+32: auto-detect gzip or zlib header
-    if (inflateInit2(&strm, 47) != Z_OK) return nil;
-
-    NSMutableData *result = [NSMutableData dataWithCapacity:inputLen * 4];
-    uint8_t buf[65536];
-    int ret;
-    do {
-        strm.next_out  = buf;
-        strm.avail_out = sizeof(buf);
-        ret = inflate(&strm, Z_NO_FLUSH);
-        if (ret < 0 && ret != Z_BUF_ERROR) { inflateEnd(&strm); return nil; }
-        NSUInteger produced = sizeof(buf) - strm.avail_out;
-        if (produced > 0) [result appendBytes:buf length:produced];
-    } while (ret != Z_STREAM_END && strm.avail_in > 0);
-
-    inflateEnd(&strm);
-    return (result.length > 0) ? result : nil;
-}
-
 static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, BOOL saveRestricted, BOOL antiSelfDestruct) {
     if (!data || data.length < 8) return nil;
 
@@ -328,12 +412,27 @@ static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, B
             }
         }
         
-        // 3. Save Restricted Media — clear `noforwards` flag in message/channel/chat objects
+        // 2. Anti-Edit — clear `updateEditMessage` and `updateEditChannelMessage`
+        if (antiEdit) {
+            if (w == kUpdateEditMessage && i + 12 <= len) {
+                // Change to kDummyConstructor to skip it
+                int32_t dummy = kDummyConstructor;
+                memcpy(bytes + i, &dummy, 4);
+                modified = YES;
+            }
+            else if (w == kUpdateEditChannelMessage && i + 12 <= len) {
+                int32_t dummy = kDummyConstructor;
+                memcpy(bytes + i, &dummy, 4);
+                modified = YES;
+            }
+        }
+
+        // 3. Save Restricted Media — clear `noforwards` flag
         if (saveRestricted) {
             if (w == kMessageConstructor && i + 12 <= len) {
                 int32_t flags = 0;
                 memcpy(&flags, bytes + i + 4, 4);
-                int32_t mask = (1 << 26); // noforwards bit
+                int32_t mask = (1 << 26) | (1 << 14); 
                 if (flags & mask) {
                     flags &= ~mask;
                     memcpy(bytes + i + 4, &flags, 4);
@@ -343,7 +442,7 @@ static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, B
             else if (w == kChannelConstructor && i + 12 <= len) {
                 int32_t flags = 0;
                 memcpy(&flags, bytes + i + 4, 4);
-                int32_t mask = (1 << 27);
+                int32_t mask = (1 << 27) | (1 << 16);
                 if (flags & mask) {
                     flags &= ~mask;
                     memcpy(bytes + i + 4, &flags, 4);
@@ -354,6 +453,17 @@ static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, B
                 int32_t flags = 0;
                 memcpy(&flags, bytes + i + 4, 4);
                 int32_t mask = (1 << 25);
+                if (flags & mask) {
+                    flags &= ~mask;
+                    memcpy(bytes + i + 4, &flags, 4);
+                    modified = YES;
+                }
+            }
+            else if ((w == kUpdateShortMessage || w == kUpdateShortChatMessage || w == kUpdateShortSentMessage) && i + 12 <= len) {
+                int32_t flags = 0;
+                memcpy(&flags, bytes + i + 4, 4);
+                // noforwards is often bit 14 in short updates too
+                int32_t mask = (1 << 14);
                 if (flags & mask) {
                     flags &= ~mask;
                     memcpy(bytes + i + 4, &flags, 4);
@@ -379,9 +489,11 @@ static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, B
     if (data && data.length >= 4) {
         int32_t ctor = 0;
         memcpy(&ctor, data.bytes, 4);
-        // customLog2(@"[Lead] parseMessage: len=%lu ctor=0x%08X", (unsigned long)data.length, (uint32_t)ctor);
-
+        
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        if ([defaults boolForKey:@"LeadDebugLogs"]) {
+            NSLog(@"[Lead] parseMessage: len=%lu ctor=0x%08X", (unsigned long)data.length, (uint32_t)ctor);
+        }
         BOOL antiRevoke    = [defaults boolForKey:kAntiRevoke];
         BOOL antiEdit      = [defaults boolForKey:kAntiEdit];
         BOOL saveRestricted = [defaults boolForKey:kDisableForwardRestriction];
@@ -439,5 +551,70 @@ static NSData *neutralizePayload(NSData *data, BOOL antiRevoke, BOOL antiEdit, B
 
 %ctor {
     // Load persisted deleted-message IDs from UserDefaults into memory on launch.
-    [TLParser loadPersistedIds];
+    [NSClassFromString(@"TLParser") loadPersistedIds];
 }
+
+/*
+static void triggerCloning(NSData *originalForwardData, id requestMessageService, id metadata, id shortMetadata) {
+    if (!originalForwardData || !requestMessageService) return;
+    
+    Class parser = NSClassFromString(@"TLParser");
+    if (!parser) {
+        NSLog(@"[Lead] Cloning failed: TLParser class not found");
+        return;
+    }
+
+    NSData *getMsgsPayload = [parser performSelector:@selector(createGetMessagesRequest:) withObject:originalForwardData];
+    if (!getMsgsPayload) {
+        logPublic(@"[Lead] Cloning failed: createGetMessagesRequest returned nil");
+        return;
+    }
+
+    logPublic(@"[Lead] triggerCloning: Fetching full message data...");
+    id getMsgsReq = [[objc_getClass("MTRequest") alloc] init];
+    if (getMsgsPayload.length >= 4) {
+        int32_t fId;
+        [getMsgsPayload getBytes:&fId length:4];
+        ((MTRequest *)getMsgsReq).functionID = @(fId);
+    }
+    
+    [getMsgsReq setPayload:getMsgsPayload metadata:nil shortMetadata:nil responseParser:^id(NSData *responseData) {
+        logPublic(@"[Lead] getMessages response received (len: %lu)", (unsigned long)responseData.length);
+        
+        id parsedObj = [parser performSelector:@selector(parseMessagesResponse:) withObject:responseData];
+        if (!parsedObj) {
+            logPublic(@"[Lead] Failed to parse getMessages response");
+            return nil;
+        }
+
+        NSArray *sendMediaPayloads = [parser performSelector:@selector(createSendMediaRequests:originalForwardData:) withObject:parsedObj withObject:originalForwardData];
+        logPublic(@"[Lead] triggerCloning: Prepared %lu clone requests", (unsigned long)sendMediaPayloads.count);
+        
+        for (NSData *smPayload in sendMediaPayloads) {
+                MTRequest *smReq = [[objc_getClass("MTRequest") alloc] init];
+                if ([smReq respondsToSelector:@selector(setMetadata:)]) smReq.metadata = metadata;
+                if ([smReq respondsToSelector:@selector(setShortMetadata:)]) smReq.shortMetadata = shortMetadata;
+                
+                if (smPayload.length >= 4) {
+                    int32_t fId;
+                    [smPayload getBytes:&fId length:4];
+                    smReq.functionID = @(fId);
+                }
+                [smReq setPayload:smPayload metadata:metadata shortMetadata:shortMetadata responseParser:^id(NSData *r) { 
+                    logPublic(@"[Lead] Clone response received (len %lu), Hex: %@", (unsigned long)r.length, hexString(r));
+                    id result = [parser performSelector:@selector(parseMessagesResponse:) withObject:r]; 
+                    logPublic(@"[Lead] Clone parsed result: %@", [result description]);
+                    return result;
+                }];
+                
+                logPublic(@"[Lead] Sending CLONE sendMedia (len %lu): %@", (unsigned long)smPayload.length, hexString(smPayload));
+                [requestMessageService addRequest:smReq];
+        }
+        return parsedObj;
+    }];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [requestMessageService addRequest:getMsgsReq];
+    });
+}
+*/

@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "Logger.h"
+#include <zlib.h>
 
 // Declaration for LSBundleProxy
 @interface LSBundleProxy : NSObject
@@ -96,9 +97,11 @@ void customLog(NSString *format, ...) {
 	
 	va_list args;
 	va_start(args, format);
-	
 	NSString *formattedMessage = [[NSString alloc] initWithFormat:format arguments:args];
 	va_end(args);
+
+    // Also log to NSLog so it appears in Console.app
+    NSLog(@"%@", formattedMessage);
 		
     dispatch_async(logQueue, ^{
         // Format the log message
@@ -122,23 +125,51 @@ void customLog(NSString *format, ...) {
 void customLog2(NSString *format, ...) {
 	va_list args;
 	va_start(args, format);
-	
 	NSString *formattedMessage = [[NSString alloc] initWithFormat:format arguments:args];
 	va_end(args);
 		
+    // Also log to NSLog so it appears in Console.app
+    NSLog(@"%@", formattedMessage);
+
     // Format the log message
-        NSDate *currentDate = [NSDate date];
-        NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
-        [dateFormatter setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
-        NSString *dateString = [dateFormatter stringFromDate:currentDate];
+    NSDate *currentDate = [NSDate date];
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    [dateFormatter setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
+    NSString *dateString = [dateFormatter stringFromDate:currentDate];
 
-        NSString *logMessage = [NSString stringWithFormat:@"%@ - %@\n", dateString, formattedMessage];
+    NSString *logMessage = [NSString stringWithFormat:@"%@ - %@\n", dateString, formattedMessage];
 
-        // Write the log message to the file
-        NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:logFilePath()];
-        if (fileHandle) {
-            [fileHandle seekToEndOfFile];
-            [fileHandle writeData:[logMessage dataUsingEncoding:NSUTF8StringEncoding]];
-            [fileHandle closeFile];
-        }
+    // Write the log message to the file
+    NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:logFilePath()];
+    if (fileHandle) {
+        [fileHandle seekToEndOfFile];
+        [fileHandle writeData:[logMessage dataUsingEncoding:NSUTF8StringEncoding]];
+        [fileHandle closeFile];
+    }
+}
+
+NSData *decompressGzip(const void *input, size_t inputLen) {
+    if (!input || inputLen < 2) return nil;
+
+    z_stream strm;
+    memset(&strm, 0, sizeof(strm));
+    strm.next_in  = (Bytef *)input;
+    strm.avail_in = (uInt)inputLen;
+
+    if (inflateInit2(&strm, 47) != Z_OK) return nil;
+
+    NSMutableData *result = [NSMutableData dataWithCapacity:inputLen * 4];
+    uint8_t buf[65536];
+    int ret;
+    do {
+        strm.next_out  = buf;
+        strm.avail_out = sizeof(buf);
+        ret = inflate(&strm, Z_NO_FLUSH);
+        if (ret < 0 && ret != Z_BUF_ERROR) { inflateEnd(&strm); return nil; }
+        NSUInteger produced = sizeof(buf) - strm.avail_out;
+        if (produced > 0) [result appendBytes:buf length:produced];
+    } while (ret != Z_STREAM_END && strm.avail_in > 0);
+
+    inflateEnd(&strm);
+    return (result.length > 0) ? result : nil;
 }
