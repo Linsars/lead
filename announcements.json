@@ -1,8 +1,9 @@
 [
   {
-    "title": "Lead 1.3.9 is out!",
-    "message": "Fixed menu not opening on non-English languages. Fixed notifications showing 'You have a new message'. Fixed ad blocker cache bypass. Added donate section.",
+    "title": "Lead 1.4.0 is ready!",
+    "message": "Added Ghost Exceptions: let selected users see your normal activity while Ghost Mode stays enabled for everyone else. Restored Anti-Edit. Added tap-to-open profiles from Ghost Exceptions, safer exception names, Hide Disappearing Label, and download speed boost options. Also improved Ghost Mode stability and settings behavior.",
     "type": "update",
-    "url": "https://t.me/Leadgramm"
+    "url": "https://t.me/Leadgramm",
+    "target_version": "1.4.0"
   }
 ]
