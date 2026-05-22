@@ -10,6 +10,9 @@
 // messages.readMessageContents#36a73f77 — sent when TTL/disappearing media is
 // opened
 #define kMessagesReadMessageContents 917472119
+// upload.getFile#be5335be / upload.getCdnFile#2000bcc3 — file chunk downloads
+#define kUploadGetFile      -1101843010
+#define kUploadGetCdnFile   -1691921240
 
 #define kActionIDTyping 381645902           // .sendMessageTypingAction
 #define kActionIDRecordingVideo -1584933265 // .sendMessageRecordVideoAction
@@ -32,6 +35,8 @@
 #define kActionIDEmojiAcknowledgement                                          \
   -1234857938 // .sendMessageEmojiInteractionSeen
 
+#define kGhostModeEnabled @"LeadGhostModeEnabled"
+#define kGhostDetailsToggle @"LeadGhostDetailsToggle"
 #define kDisableOnlineStatus @"disableOnlineStatus"
 
 #define kDisableTypingStatus @"disableTypingStatus"
@@ -75,3 +80,9 @@
 
 #define FILE_PICKER_FIX_KEY @"LeadFixFilePicker"
 #define FILE_PICKER_PATH @"LeadFileFixUsingSomeUglyHacks"
+
+// Download speed boost: 0 = off, 1 = medium (512KB/8 parts), 2 = maximum (1MB/12 parts)
+#define kDownloadSpeedBoost @"LeadDownloadSpeedBoost"
+
+// Send audio/video files as voice messages
+#define kSendAsVoice @"LeadSendAsVoice"

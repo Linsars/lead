@@ -1,1 +1,8 @@
-[]
+[
+  {
+    "title": "Lead 1.3.9 is out!",
+    "message": "Fixed menu not opening on non-English languages. Fixed notifications showing 'You have a new message'. Fixed ad blocker cache bypass. Added donate section.",
+    "type": "update",
+    "url": "https://t.me/Leadgramm"
+  }
+]

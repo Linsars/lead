@@ -29,6 +29,13 @@ NSString *LeadBundlePath(void);
 @interface LanguageSelector : UIViewController <UITableViewDataSource, UITableViewDelegate>
 @end
 
+@interface DonateViewController : UIViewController <UITableViewDataSource, UITableViewDelegate>
+@end
+
+@interface LeadDownloadBoost : NSObject
++ (void)install;
+@end
+
 @interface LocationSelector : UIViewController <MKMapViewDelegate>
 @end
 

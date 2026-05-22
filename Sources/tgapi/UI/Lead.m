@@ -2,23 +2,28 @@
 #import "Icons.h"
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
 #define TGLoc(key) [LeadLocalization localizedStringForKey:(key)]
 
 // Announcements are fetched from this JSON file on GitHub
 static NSString *const kLeadAnnouncementsURL = @"https://raw.githubusercontent.com/w3ltyyy/lead/main/announcements.json";
-static NSString *const kLeadTweakVersion = @"1.3.6";
+static NSString *const kLeadTweakVersion = @"1.3.9";
 
 @interface Lead ()
 @property(nonatomic, strong) UITableView *tableView;
 @property(nonatomic, strong) NSString *cacheSize;
 @property(nonatomic, strong) UIView *announcementsContainer;
 @property(nonatomic, strong) NSArray *announcementsData;
+@property(nonatomic, assign) BOOL isGhostModeExpanded;
+- (NSString *)switchKeyForIndexPath:(NSIndexPath *)indexPath;
+- (NSString *)sizeOfUglyFileFixDirectory;
 @end
 
 @implementation Lead
 
 - (void)viewDidLoad {
+  self.isGhostModeExpanded = [[NSUserDefaults standardUserDefaults] boolForKey:kGhostDetailsToggle];
 
   [self setupTableView];
   [self setupIconAsHeader];
@@ -51,8 +56,8 @@ static NSString *const kLeadTweakVersion = @"1.3.6";
   versionLabel.textAlignment = NSTextAlignmentCenter;
   versionLabel.numberOfLines = 0;
 
-  NSString *version = @"1.3.6"; // Updated build
-  NSString *build = @"94";      // Updated build number
+  NSString *version = @"1.3.9";
+  NSString *build = @"103";
   versionLabel.text = [NSString
       stringWithFormat:@"Lead Version %@ (Build %@)\n© 2026 Lead Team", version,
                        build];
@@ -79,11 +84,10 @@ static NSString *const kLeadTweakVersion = @"1.3.6";
 }
 
 - (void)didChangeFakeLocation {
-  NSIndexSet *section = [NSIndexSet indexSetWithIndex:4];
+  NSIndexSet *section = [NSIndexSet indexSetWithIndex:3];
   [self.tableView reloadSections:section
                 withRowAnimation:UITableViewRowAnimationAutomatic];
 }
-
 - (void)setupTableView {
   self.tableView =
       [[UITableView alloc] initWithFrame:CGRectZero
@@ -533,25 +537,22 @@ static NSString *const kLeadTweakVersion = @"1.3.6";
 
 typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   GHOST_MODE = 0,
-  READ_RECEIPT = 1,
-  MISC = 2,
-  FILE_FIXER = 3,
-  FAKE_LOCATION = 4,
-  LANGUAGE = 5,
-  CREDITS = 6,
+  MISC = 1,
+  FILE_FIXER = 2,
+  FAKE_LOCATION = 3,
+  LANGUAGE = 4,
+  CREDITS = 5,
 };
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-  return 7;
+  return 6;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView
     numberOfRowsInSection:(NSInteger)section {
   switch (section) {
   case GHOST_MODE:
-    return 17;
-  case READ_RECEIPT:
-    return 2;
+    return 2 + (self.isGhostModeExpanded ? 19 : 0);
   case MISC:
     return 7;
   case FILE_FIXER:
@@ -561,7 +562,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   case LANGUAGE:
     return 1;
   case CREDITS:
-    return 2;
+    return 3;
   default:
     return 0;
   }
@@ -574,8 +575,6 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   switch (section) {
   case GHOST_MODE:
     return TGLoc(@"GHOST_MODE_SECTION_HEADER");
-  case READ_RECEIPT:
-    return TGLoc(@"READ_RECEIPT_SECTION_HEADER");
   case MISC:
     return TGLoc(@"MISC_SECTION_HEADER");
   case FILE_FIXER:
@@ -621,78 +620,105 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   UITableViewCell *cell;
 
   if (indexPath.section == 0) { // GHOST MOODE
+    if (indexPath.row == 1) {
+      cell = [self normalCellFromTableView:tableView];
+      cell.textLabel.text = @"Advanced Settings";
+      cell.detailTextLabel.text = self.isGhostModeExpanded ? @"Hide detail settings" : @"Show detail settings";
+      cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+      cell.accessoryView = nil;
+      cell.imageView.image = [UIImage systemImageNamed:@"slider.horizontal.3"];
+      cell.imageView.tintColor = [self dynamicColorBW];
+      return cell;
+    }
+
     cell = [self switchCellFromTableView:tableView];
     cell.imageView.image = nil;
 
     if (indexPath.row == 0) {
-      cell.textLabel.text = TGLoc(@"DISABLE_ONLINE_STATUS_TITLE");
-      cell.detailTextLabel.text = TGLoc(@"DISABLE_ONLINE_STATUS_SUBTITLE");
-    } else if (indexPath.row == 1) {
-      cell.textLabel.text = TGLoc(@"DISABLE_TYPING_STATUS_TITLE");
-      cell.detailTextLabel.text = TGLoc(@"DISABLE_TYPING_STATUS_SUBTITLE");
-    } else if (indexPath.row == 2) {
-      cell.textLabel.text = TGLoc(@"DISABLE_RECORDING_VIDEO_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_RECORDING_VIDEO_STATUS_SUBTITLE");
-    } else if (indexPath.row == 3) {
-      cell.textLabel.text = TGLoc(@"DISABLE_UPLOADING_VIDEO_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_UPLOADING_VIDEO_STATUS_SUBTITLE");
-    } else if (indexPath.row == 4) {
-      cell.textLabel.text = TGLoc(@"DISABLE_VC_MESSAGE_RECORDING_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_VC_MESSAGE_RECORDING_STATUS_SUBTITLE");
-    } else if (indexPath.row == 5) {
-      cell.textLabel.text = TGLoc(@"DISABLE_VC_MESSAGE_UPLOADING_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_VC_MESSAGE_UPLOADING_STATUS_SUBTITLE");
-    } else if (indexPath.row == 6) {
-      cell.textLabel.text = TGLoc(@"DISABLE_UPLOADING_PHOTO_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_UPLOADING_PHOTO_STATUS_SUBTITLE");
-    } else if (indexPath.row == 7) {
-      cell.textLabel.text = TGLoc(@"DISABLE_UPLOADING_FILE_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_UPLOADING_FILE_STATUS_SUBTITLE");
-    } else if (indexPath.row == 8) {
-      cell.textLabel.text = TGLoc(@"DISABLE_CHOOSING_LOCATION_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_CHOOSING_LOCATION_STATUS_SUBTITLE");
-    } else if (indexPath.row == 9) {
-      cell.textLabel.text = TGLoc(@"DISABLE_CHOOSING_CONTACT_TITLE");
-      cell.detailTextLabel.text = TGLoc(@"DISABLE_CHOOSING_CONTACT_SUBTITLE");
-    } else if (indexPath.row == 10) {
-      cell.textLabel.text = TGLoc(@"DISABLE_PLAYING_GAME_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_PLAYING_GAME_STATUS_SUBTITLE");
-    } else if (indexPath.row == 11) {
-      cell.textLabel.text =
-          TGLoc(@"DISABLE_RECORDING_ROUND_VIDEO_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_RECORDING_ROUND_VIDEO_STATUS_SUBTITLE");
-    } else if (indexPath.row == 12) {
-      cell.textLabel.text =
-          TGLoc(@"DISABLE_UPLOADING_ROUND_VIDEO_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_UPLOADING_ROUND_VIDEO_STATUS_TITLE");
-    } else if (indexPath.row == 13) {
-      cell.textLabel.text =
-          TGLoc(@"DISABLE_SPEAKING_IN_GROUP_CALL_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_SPEAKING_IN_GROUP_CALL_STATUS_SUBTITLE");
-    } else if (indexPath.row == 14) {
-      cell.textLabel.text = TGLoc(@"DISABLE_CHOOSING_STICKER_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_CHOOSING_STICKER_STATUS_SUBTITLE");
-    } else if (indexPath.row == 15) {
-      cell.textLabel.text = TGLoc(@"DISABLE_EMOJI_INTERACTION_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_EMOJI_INTERACTION_STATUS_SUBTITLE");
-    } else if (indexPath.row == 16) {
-      cell.textLabel.text =
-          TGLoc(@"DISABLE_EMOJI_ACKNOWLEDGEMENT_STATUS_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_EMOJI_ACKNOWLEDGEMENT_STATUS_SUBTITLE");
+      cell.textLabel.text = @"Ghost Mode";
+      cell.detailTextLabel.text = @"Main toggle for all ghost features";
+      cell.imageView.image = [UIImage systemImageNamed:@"eye.slash.fill"];
+      cell.imageView.tintColor = [self dynamicColorBW];
+    } else {
+      NSInteger ghostRow = indexPath.row - 2;
+      if (ghostRow == 0) {
+        cell.textLabel.text = TGLoc(@"DISABLE_ONLINE_STATUS_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"DISABLE_ONLINE_STATUS_SUBTITLE");
+      } else if (ghostRow == 1) {
+        cell.textLabel.text = TGLoc(@"DISABLE_TYPING_STATUS_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"DISABLE_TYPING_STATUS_SUBTITLE");
+      } else if (ghostRow == 2) {
+        cell.textLabel.text = TGLoc(@"DISABLE_RECORDING_VIDEO_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_RECORDING_VIDEO_STATUS_SUBTITLE");
+      } else if (ghostRow == 3) {
+        cell.textLabel.text = TGLoc(@"DISABLE_UPLOADING_VIDEO_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_UPLOADING_VIDEO_STATUS_SUBTITLE");
+      } else if (ghostRow == 4) {
+        cell.textLabel.text = TGLoc(@"DISABLE_VC_MESSAGE_RECORDING_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_VC_MESSAGE_RECORDING_STATUS_SUBTITLE");
+      } else if (ghostRow == 5) {
+        cell.textLabel.text = TGLoc(@"DISABLE_VC_MESSAGE_UPLOADING_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_VC_MESSAGE_UPLOADING_STATUS_SUBTITLE");
+      } else if (ghostRow == 6) {
+        cell.textLabel.text = TGLoc(@"DISABLE_UPLOADING_PHOTO_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_UPLOADING_PHOTO_STATUS_SUBTITLE");
+      } else if (ghostRow == 7) {
+        cell.textLabel.text = TGLoc(@"DISABLE_UPLOADING_FILE_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_UPLOADING_FILE_STATUS_SUBTITLE");
+      } else if (ghostRow == 8) {
+        cell.textLabel.text = TGLoc(@"DISABLE_CHOOSING_LOCATION_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_CHOOSING_LOCATION_STATUS_SUBTITLE");
+      } else if (ghostRow == 9) {
+        cell.textLabel.text = TGLoc(@"DISABLE_CHOOSING_CONTACT_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"DISABLE_CHOOSING_CONTACT_SUBTITLE");
+      } else if (ghostRow == 10) {
+        cell.textLabel.text = TGLoc(@"DISABLE_PLAYING_GAME_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_PLAYING_GAME_STATUS_SUBTITLE");
+      } else if (ghostRow == 11) {
+        cell.textLabel.text =
+            TGLoc(@"DISABLE_RECORDING_ROUND_VIDEO_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_RECORDING_ROUND_VIDEO_STATUS_SUBTITLE");
+      } else if (ghostRow == 12) {
+        cell.textLabel.text =
+            TGLoc(@"DISABLE_UPLOADING_ROUND_VIDEO_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_UPLOADING_ROUND_VIDEO_STATUS_TITLE");
+      } else if (ghostRow == 13) {
+        cell.textLabel.text =
+            TGLoc(@"DISABLE_SPEAKING_IN_GROUP_CALL_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_SPEAKING_IN_GROUP_CALL_STATUS_SUBTITLE");
+      } else if (ghostRow == 14) {
+        cell.textLabel.text = TGLoc(@"DISABLE_CHOOSING_STICKER_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_CHOOSING_STICKER_STATUS_SUBTITLE");
+      } else if (ghostRow == 15) {
+        cell.textLabel.text = TGLoc(@"DISABLE_EMOJI_INTERACTION_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_EMOJI_INTERACTION_STATUS_SUBTITLE");
+      } else if (ghostRow == 16) {
+        cell.textLabel.text =
+            TGLoc(@"DISABLE_EMOJI_ACKNOWLEDGEMENT_STATUS_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_EMOJI_ACKNOWLEDGEMENT_STATUS_SUBTITLE");
+      } else if (ghostRow == 17) {
+        cell.textLabel.text = TGLoc(@"DISABLE_MESSAGE_READ_RECEIPT_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_MESSAGE_READ_RECEIPT_SUBTITLE");
+      } else if (ghostRow == 18) {
+        cell.textLabel.text = TGLoc(@"DISABLE_STORY_READ_RECEIPT_TITLE");
+        cell.detailTextLabel.text =
+            TGLoc(@"DISABLE_STORY_READ_RECEIPT_SUBTITLE");
+      }
     }
 
     UISwitch *toggle = (UISwitch *)cell.accessoryView;
@@ -712,36 +738,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     cell.detailTextLabel.numberOfLines = 0;
     return cell;
 
-  } else if (indexPath.section == 1) { // Read Receipts
-    cell = [self switchCellFromTableView:tableView];
-    cell.imageView.image = nil;
-
-    if (indexPath.row == 0) {
-      cell.textLabel.text = TGLoc(@"DISABLE_MESSAGE_READ_RECEIPT_TITLE");
-      cell.detailTextLabel.text =
-          TGLoc(@"DISABLE_MESSAGE_READ_RECEIPT_SUBTITLE");
-    } else if (indexPath.row == 1) {
-      cell.textLabel.text = TGLoc(@"DISABLE_STORY_READ_RECEIPT_TITLE");
-      cell.detailTextLabel.text = TGLoc(@"DISABLE_STORY_READ_RECEIPT_SUBTITLE");
-    }
-
-    UISwitch *toggle = (UISwitch *)cell.accessoryView;
-    if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) {
-      toggle = [[UISwitch alloc] init];
-    }
-
-    NSString *switchKey = [self switchKeyForIndexPath:indexPath];
-    toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
-    [toggle addTarget:self
-                  action:@selector(switchChanged:)
-        forControlEvents:UIControlEventValueChanged];
-    toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
-    cell.accessoryView = toggle;
-
-    cell.textLabel.numberOfLines = 0;
-    cell.detailTextLabel.numberOfLines = 0;
-    return cell;
-  } else if (indexPath.section == 2) { // MISC
+  } else if (indexPath.section == MISC) {
     cell = [self switchCellFromTableView:tableView];
     cell.imageView.image = nil;
 
@@ -801,157 +798,94 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     cell.textLabel.numberOfLines = 0;
     cell.detailTextLabel.numberOfLines = 0;
     return cell;
-  }
-  if (indexPath.section == 3) { // File Picker Fix
-    if (indexPath.row == 0) {   // Enable File Picker Fix
+  } else if (indexPath.section == FILE_FIXER) {
+    if (indexPath.row == 0) {
       cell = [self switchCellFromTableView:tableView];
-
-      cell.imageView.image =
-          [UIImage systemImageNamed:@"folder.fill.badge.gear"];
+      cell.imageView.image = [UIImage systemImageNamed:@"folder.fill.badge.gear"];
       cell.imageView.tintColor = [self dynamicColorBW];
       cell.textLabel.text = TGLoc(@"FIX_FILE_PICKER_TITLE");
       cell.detailTextLabel.text = TGLoc(@"FIX_FILE_PICKER_SUBTITLE");
-
       UISwitch *toggle = (UISwitch *)cell.accessoryView;
-      if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) {
-        toggle = [[UISwitch alloc] init];
-      }
-
+      if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
       NSString *switchKey = [self switchKeyForIndexPath:indexPath];
       toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
-      [toggle addTarget:self
-                    action:@selector(switchChanged:)
-          forControlEvents:UIControlEventValueChanged];
+      [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
       toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
       cell.accessoryView = toggle;
-
       cell.textLabel.numberOfLines = 0;
       cell.detailTextLabel.numberOfLines = 0;
       return cell;
     }
-
-    if (indexPath.row == 1) {
-      cell = [self normalCellFromTableView:tableView];
-      cell.imageView.image = nil;
-
-      cell.textLabel.text = TGLoc(@"CLEAR_FILE_PICKER_CACHE_TITLE");
-      cell.detailTextLabel.text = TGLoc(@"CLEAR_FILE_PICKER_CACHE_SUBTITLE");
-      cell.imageView.image = [UIImage systemImageNamed:@"trash"];
-      cell.imageView.tintColor = [UIColor redColor];
-
-      // Initially show a UIActivityIndicator
-      UIActivityIndicatorView *loadingIcon = [[UIActivityIndicatorView alloc]
-          initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
-      [loadingIcon startAnimating];
-      cell.accessoryView = loadingIcon;
-
-      dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0),
-                     ^{
-                       if (!self.cacheSize) {
-                         self.cacheSize = [self sizeOfUglyFileFixDirectory];
-                       }
-
-                       dispatch_async(dispatch_get_main_queue(), ^{
-                         UITableViewCell *currentCell =
-                             [tableView cellForRowAtIndexPath:indexPath];
-                         if (currentCell == cell) {
-                           UILabel *sizeLabel = [[UILabel alloc] init];
-                           sizeLabel.text = self.cacheSize;
-                           cell.accessoryView = sizeLabel;
-
-                           [sizeLabel sizeToFit];
-                         }
-                       });
-                     });
-
-      cell.textLabel.numberOfLines = 0;
-      cell.detailTextLabel.numberOfLines = 0;
-      return cell;
-    }
-  }
-
-  if (indexPath.section == 4) { // Fake Location
+    cell = [self normalCellFromTableView:tableView];
+    cell.textLabel.text = TGLoc(@"CLEAR_FILE_PICKER_CACHE_TITLE");
+    cell.detailTextLabel.text = TGLoc(@"CLEAR_FILE_PICKER_CACHE_SUBTITLE");
+    cell.imageView.image = [UIImage systemImageNamed:@"trash"];
+    cell.imageView.tintColor = [UIColor redColor];
+    UIActivityIndicatorView *loadingIcon = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    [loadingIcon startAnimating];
+    cell.accessoryView = loadingIcon;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+      if (!self.cacheSize) self.cacheSize = [self sizeOfUglyFileFixDirectory];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        UITableViewCell *currentCell = [tableView cellForRowAtIndexPath:indexPath];
+        if (currentCell == cell) {
+          UILabel *sizeLabel = [[UILabel alloc] init];
+          sizeLabel.text = self.cacheSize;
+          cell.accessoryView = sizeLabel;
+          [sizeLabel sizeToFit];
+        }
+      });
+    });
+    cell.textLabel.numberOfLines = 0;
+    cell.detailTextLabel.numberOfLines = 0;
+    return cell;
+  } else if (indexPath.section == FAKE_LOCATION) {
     if (indexPath.row == 0) {
       cell = [self switchCellFromTableView:tableView];
-
       cell.imageView.image = [UIImage systemImageNamed:@"location.fill"];
       cell.imageView.tintColor = [self dynamicColorBW];
       cell.textLabel.text = TGLoc(@"ENABLE_FAKE_LOCATION_TITLE");
       cell.detailTextLabel.text = TGLoc(@"ENABLE_FAKE_LOCATION_SUBTITLE");
-
       UISwitch *toggle = (UISwitch *)cell.accessoryView;
-      if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) {
-        toggle = [[UISwitch alloc] init];
-      }
-
+      if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
       NSString *switchKey = [self switchKeyForIndexPath:indexPath];
       toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
-      [toggle addTarget:self
-                    action:@selector(switchChanged:)
-          forControlEvents:UIControlEventValueChanged];
+      [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
       toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
       cell.accessoryView = toggle;
     }
-
     if (indexPath.row == 1) {
       cell = [self normalCellFromTableView:tableView];
-
       cell.imageView.image = [UIImage systemImageNamed:@"location.fill"];
       cell.imageView.tintColor = [self dynamicColorBW];
       cell.textLabel.text = TGLoc(@"SELECT_FAKE_LOCATION_TITLE");
-
       NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
       CGFloat savedLongitude = [defaults floatForKey:FAKE_LONGITUDE_KEY];
       CGFloat savedLatitude = [defaults floatForKey:FAKE_LATITUDE_KEY];
-
-      NSString *savedCord = savedCord =
-          [NSString stringWithFormat:@"lon :%f\nlat :%f", savedLongitude ?: 0,
-                                     savedLatitude ?: 0];
-
-      cell.textLabel.numberOfLines = 0;
-      cell.detailTextLabel.text = savedCord;
+      cell.detailTextLabel.text = [NSString stringWithFormat:@"lon :%f\nlat :%f", savedLongitude ?: 0, savedLatitude ?: 0];
     }
     cell.detailTextLabel.numberOfLines = 0;
     return cell;
-  }
-
-  if (indexPath.section == 5) { // Language
+  } else if (indexPath.section == LANGUAGE) {
     cell = [self normalCellFromTableView:tableView];
-    if (indexPath.row == 0) {
-      cell.textLabel.text = @"Change Language";
-      cell.detailTextLabel.text = @"";
-      cell.imageView.image = [UIImage systemImageNamed:@"globe"];
-      cell.imageView.tintColor = [self dynamicColorBW];
-      cell.imageView.layer.cornerRadius = 40 / 8;
-      cell.imageView.layer.masksToBounds = YES;
-      cell.accessoryView = nil;
-
-      cell.textLabel.numberOfLines = 0;
-      cell.detailTextLabel.numberOfLines = 0;
-      return cell;
-    }
-  }
-
-  if (indexPath.section == 6) { // Credits
+    cell.textLabel.text = @"Change Language";
+    cell.detailTextLabel.text = @"";
+    cell.imageView.image = [UIImage systemImageNamed:@"globe"];
+    cell.imageView.tintColor = [self dynamicColorBW];
+    cell.accessoryView = nil;
+    cell.textLabel.numberOfLines = 0;
+    cell.detailTextLabel.numberOfLines = 0;
+    return cell;
+  } else if (indexPath.section == CREDITS) {
     cell = [self normalCellFromTableView:tableView];
-
     if (indexPath.row == 0) {
       cell.textLabel.text = @"Lead Team / w3ltyyy";
       cell.detailTextLabel.text = @"Developer";
       cell.detailTextLabel.textColor = [UIColor lightGrayColor];
-      NSData *imageData = [[NSData alloc]
-          initWithBase64EncodedString:CHOCOPNG
-                              options:
-                                  NSDataBase64DecodingIgnoreUnknownCharacters];
+      NSData *imageData = [[NSData alloc] initWithBase64EncodedString:CHOCOPNG options:NSDataBase64DecodingIgnoreUnknownCharacters];
       UIImage *rawImage = [UIImage imageWithData:imageData];
-      // Render a proper 40×40 thumbnail — imageWithData:scale: only sets DPI,
-      // not display size
-      UIGraphicsImageRenderer *renderer =
-          [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(40, 40)];
-      UIImage *thumb =
-          [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
-            [rawImage drawInRect:CGRectMake(0, 0, 40, 40)];
-          }];
+      UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(40, 40)];
+      UIImage *thumb = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) { [rawImage drawInRect:CGRectMake(0, 0, 40, 40)]; }];
       cell.imageView.image = thumb;
       cell.imageView.layer.cornerRadius = 8;
       cell.imageView.layer.masksToBounds = YES;
@@ -961,6 +895,13 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
       cell.detailTextLabel.text = @"A note from developer";
       cell.imageView.image = [UIImage systemImageNamed:@"note.text"];
       cell.imageView.tintColor = [self dynamicColorBW];
+      cell.accessoryView = nil;
+      cell.detailTextLabel.textColor = [UIColor lightGrayColor];
+    } else if (indexPath.row == 2) {
+      cell.textLabel.text = @"Support Development";
+      cell.detailTextLabel.text = @"Donate crypto to support the project";
+      cell.imageView.image = [UIImage systemImageNamed:@"heart.fill"];
+      cell.imageView.tintColor = [UIColor systemPinkColor];
       cell.accessoryView = nil;
       cell.detailTextLabel.textColor = [UIColor lightGrayColor];
     }
@@ -978,10 +919,13 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
   [tableView deselectRowAtIndexPath:indexPath animated:YES];
 
-  if (indexPath.section == FILE_FIXER) { // File Picker Fix
-    if (indexPath.row == 1) {
-      [self clearFilePickerFixCache];
-    }
+  if (indexPath.section == 0 && indexPath.row == 1) { // Ghost Expansion
+    self.isGhostModeExpanded = !self.isGhostModeExpanded;
+    [[NSUserDefaults standardUserDefaults] setBool:self.isGhostModeExpanded
+                                            forKey:kGhostDetailsToggle];
+    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:0]
+                  withRowAnimation:UITableViewRowAnimationAutomatic];
+    return;
   }
 
   if (indexPath.section == FAKE_LOCATION) { // Fake Location
@@ -1006,6 +950,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
       }
     } else if (indexPath.row == 1) {
       [self showDisclaimer];
+    } else if (indexPath.row == 2) {
+      [self showDonateSheet];
     }
   }
 }
@@ -1019,6 +965,20 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   NSString *switchKey = [self switchKeyForIndexPath:indexPath];
 
   if (switchKey) {
+    if ([switchKey isEqualToString:kGhostModeEnabled] && sender.isOn) {
+      if (![self anyGhostSubFeatureEnabled]) {
+        [sender setOn:NO animated:YES];
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:kGhostModeEnabled];
+        
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Ghost Mode"
+                                                                       message:@"Please enable at least one feature in Advanced Settings first."
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+      }
+    }
+    
     [[NSUserDefaults standardUserDefaults] setBool:sender.isOn
                                             forKey:switchKey];
   }
@@ -1027,7 +987,11 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 - (NSString *)switchKeyForIndexPath:(NSIndexPath *)indexPath {
   switch (indexPath.section) {
   case 0:
-    switch (indexPath.row) {
+    if (indexPath.row == 0) return kGhostModeEnabled;
+    if (indexPath.row < 2) return nil;
+    
+    NSInteger ghostRow = indexPath.row - 2;
+    switch (ghostRow) {
     case 0:
       return kDisableOnlineStatus;
     case 1:
@@ -1062,19 +1026,14 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
       return kDisableEmojiInteractionStatus;
     case 16:
       return kDisableEmojiAcknowledgementStatus;
-    default:
-      return nil;
-    }
-  case 1:
-    switch (indexPath.row) {
-    case 0:
+    case 17:
       return kDisableMessageReadReceipt;
-    case 1:
+    case 18:
       return kDisableStoriesReadReceipt;
     default:
       return nil;
     }
-  case 2:
+  case 1: // MISC
     switch (indexPath.row) {
     case 0:
       return kDisableAllAds;
@@ -1093,20 +1052,11 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     default:
       return nil;
     }
-  case 3:
-    switch (indexPath.row) {
-    case 0:
-      return FILE_PICKER_FIX_KEY;
-    default:
-      return nil;
-    }
-  case 4:
-    switch (indexPath.row) {
-    case 0:
-      return FAKE_LOCATION_ENABLED_KEY;
-    default:
-      return nil;
-    }
+  case 2: // File Picker Fix
+    if (indexPath.row == 0) return FILE_PICKER_FIX_KEY;
+    return nil;
+  case 3: // Fake Location
+    return FAKE_LOCATION_ENABLED_KEY;
   default:
     return nil;
   }
@@ -1145,6 +1095,59 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   return formattedSize;
 }
 
+- (BOOL)anyGhostSubFeatureEnabled {
+  NSArray *keys = @[
+    kDisableOnlineStatus, kDisableTypingStatus, kDisableRecordingVideoStatus,
+    kDisableUploadingVideoStatus, kDisableRecordingVoiceStatus,
+    kDisableUploadingVoiceStatus, kDisableUploadingPhotoStatus,
+    kDisableUploadingFileStatus, kDisableChoosingLocationStatus,
+    kDisableChoosingContactStatus, kDisablePlayingGameStatus,
+    kDisableRecordingRoundVideoStatus, kDisableUploadingRoundVideoStatus,
+    kDisableSpeakingInGroupCallStatus, kDisableChoosingStickerStatus,
+    kDisableEmojiInteractionStatus, kDisableEmojiAcknowledgementStatus,
+    kDisableMessageReadReceipt, kDisableStoriesReadReceipt
+  ];
+  for (NSString *key in keys) {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:key])
+      return YES;
+  }
+  return NO;
+}
+
+- (void)showDebugLog {
+  NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/lead_debug.txt"];
+  NSString *logContent = [NSString stringWithContentsOfFile:logPath encoding:NSUTF8StringEncoding error:nil];
+
+  if (!logContent || logContent.length == 0) {
+    logContent = [NSString stringWithFormat:@"Log empty or not found.\nPath: %@", logPath];
+  } else if (logContent.length > 3000) {
+    logContent = [NSString stringWithFormat:@"...(last 3000 chars)\n%@",
+                  [logContent substringFromIndex:logContent.length - 3000]];
+  }
+
+  UIAlertController *alert = [UIAlertController
+      alertControllerWithTitle:@"Debug Log"
+                       message:logContent
+                preferredStyle:UIAlertControllerStyleAlert];
+
+  [alert addAction:[UIAlertAction actionWithTitle:@"Copy" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+    [UIPasteboard generalPasteboard].string = logContent;
+  }]];
+  [alert addAction:[UIAlertAction actionWithTitle:@"Clear" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *a) {
+    [@"" writeToFile:logPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  }]];
+  [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+
+  [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showDonateSheet {
+  DonateViewController *vc = [DonateViewController new];
+  UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
+  [self presentViewController:nav animated:YES completion:nil];
+}
+
+
 - (void)showDisclaimer {
   UIAlertController *alert =
       [UIAlertController alertControllerWithTitle:TGLoc(@"DISCLAIMER")
@@ -1160,6 +1163,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 
   [self presentViewController:alert animated:YES completion:nil];
 }
+
 
 - (void)showLanguageSelector {
   LanguageSelector *ui = [LanguageSelector new];

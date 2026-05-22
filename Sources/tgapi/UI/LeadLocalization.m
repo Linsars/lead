@@ -97,13 +97,17 @@ NSString *LeadBundlePath(void) {
           ?: @"en";
 
   NSDictionary *dict = GetAllTranslations(lang);
-  if (!dict) {
+  if (!dict || dict.count == 0) {
+    // Unknown language code — reset to English so next launch doesn't repeat
+    [[NSUserDefaults standardUserDefaults] setObject:@"en"
+                                              forKey:@"LeadLanguage"];
+    lang = @"en";
     dict = GetAllTranslations(@"en");
   }
 
   self.strings = dict;
 
-  if (dict) {
+  if (dict && dict.count > 0) {
     self.localization =
         [[objc_getClass("TGLocalization") alloc] initWithVersion:96929692
                                                             code:lang
@@ -239,6 +243,22 @@ NSString *LeadBundlePath(void) {
           @"Prevent messages in chats with auto-delete (1 day, 7 days, etc.) "
           @"from being deleted. Messages stay visible even after the timer "
           @"expires.",
+      /* Download Speed Boost */
+      @"DOWNLOAD_BOOST_SECTION_HEADER" : @"Download Speed",
+      @"DOWNLOAD_BOOST_TITLE" : @"Download Speed Boost",
+      @"DOWNLOAD_BOOST_SUBTITLE" : @"Increases chunk size and parallel connections for faster file downloads. Medium is recommended for most users.",
+      @"DOWNLOAD_BOOST_OFF" : @"Off (Default)",
+      @"DOWNLOAD_BOOST_MEDIUM" : @"Medium (512 KB / 8 parts)",
+      @"DOWNLOAD_BOOST_MAX" : @"Maximum (1 MB / 12 parts)",
+      /* Calls & Voice */
+      @"CONFIRM_CALLS_TITLE" : @"Confirm Calls",
+      @"CONFIRM_CALLS_SUBTITLE" : @"Show a confirmation dialog before answering incoming calls.",
+      @"SEND_AS_VOICE_TITLE" : @"Send Audio as Voice Message",
+      @"SEND_AS_VOICE_SUBTITLE" : @"Audio files you send will appear as voice bubbles instead of file attachments.",
+      @"DOWNLOAD_STORIES_TITLE" : @"Auto-Save Stories",
+      @"DOWNLOAD_STORIES_SUBTITLE" : @"Automatically save stories to your camera roll when you open them.",
+      @"HIDE_STORIES_TITLE" : @"Hide Stories Bar",
+      @"HIDE_STORIES_SUBTITLE" : @"Remove the stories row from the top of your chats list.",
       /* File Picker */
       @"FIX_FILE_PICKER_TITLE" : @"Fix File Picker",
       @"FIX_FILE_PICKER_SUBTITLE" :

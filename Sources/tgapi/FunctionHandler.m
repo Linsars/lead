@@ -12,6 +12,7 @@ NSData *boolFalse() {
 
 // Handlers
 void handleOnlineStatus(MTRequest *request, NSData *payload) {
+	if (![[NSUserDefaults standardUserDefaults] boolForKey:kGhostModeEnabled]) return;
 	
 	NSData *isOfflineData = [payload subdataWithRange:NSMakeRange(payload.length - 4, 4)];
 	uint32_t isOffline = 0;
@@ -66,6 +67,7 @@ void read_Input_Peer(NSData *data, int *offset) {
 }
 
 void handleSetTyping(MTRequest *request, NSData *payload) {
+	if (![[NSUserDefaults standardUserDefaults] boolForKey:kGhostModeEnabled]) return;
 	
 	int offset = 0; 
 	offset += 4; // Skip First 4 Bytes of constructor id;
@@ -146,6 +148,7 @@ void handleSetTyping(MTRequest *request, NSData *payload) {
 }
 
 void handleMessageReadReceipt(MTRequest *request, NSData *payload) {
+	if (![[NSUserDefaults standardUserDefaults] boolForKey:kGhostModeEnabled]) return;
 	if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableMessageReadReceipt]) {
 		
 		 uint8_t header[] = {0x85, 0x91, 0xD1, 0x84}; // messages.affectedMessages#84d19185
@@ -162,6 +165,7 @@ void handleMessageReadReceipt(MTRequest *request, NSData *payload) {
 }
 
 void handleStoriesReadReceipt(MTRequest *request, NSData *payload) {
+	if (![[NSUserDefaults standardUserDefaults] boolForKey:kGhostModeEnabled]) return;
 	if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableStoriesReadReceipt]) {
 		
 		uint8_t vectorID[] = {0x15, 0xC4, 0xB5, 0x1C}; // vector#1cb5c415
@@ -184,6 +188,7 @@ void handleGetSponsoredMessages(MTRequest *request, NSData *payload) {
 }
 
 void handleChannelsReadReceipt(MTRequest *request, NSData *payload) {
+	if (![[NSUserDefaults standardUserDefaults] boolForKey:kGhostModeEnabled]) return;
 	if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableMessageReadReceipt]) {
 		request.fakeData = boolTrue();
 	}

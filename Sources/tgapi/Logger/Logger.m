@@ -123,28 +123,29 @@ void customLog(NSString *format, ...) {
 }
 
 void customLog2(NSString *format, ...) {
-	va_list args;
-	va_start(args, format);
-	NSString *formattedMessage = [[NSString alloc] initWithFormat:format arguments:args];
-	va_end(args);
-		
-    // Also log to NSLog so it appears in Console.app
-    NSLog(@"%@", formattedMessage);
+    va_list args;
+    va_start(args, format);
+    NSString *formattedMessage = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
 
-    // Format the log message
     NSDate *currentDate = [NSDate date];
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
-    [dateFormatter setDateFormat:@"yyyy-MM-dd HH:mm:ss"];
+    [dateFormatter setDateFormat:@"HH:mm:ss"];
     NSString *dateString = [dateFormatter stringFromDate:currentDate];
+    NSString *logMessage = [NSString stringWithFormat:@"%@ %@\n", dateString, formattedMessage];
+    NSData *logData = [logMessage dataUsingEncoding:NSUTF8StringEncoding];
 
-    NSString *logMessage = [NSString stringWithFormat:@"%@ - %@\n", dateString, formattedMessage];
-
-    // Write the log message to the file
-    NSFileHandle *fileHandle = [NSFileHandle fileHandleForWritingAtPath:logFilePath()];
-    if (fileHandle) {
-        [fileHandle seekToEndOfFile];
-        [fileHandle writeData:[logMessage dataUsingEncoding:NSUTF8StringEncoding]];
-        [fileHandle closeFile];
+    // Always write to Documents — works on non-jb sideload without app group
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/lead_debug.txt"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    if (![fm fileExistsAtPath:path]) {
+        [fm createFileAtPath:path contents:nil attributes:nil];
+    }
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (fh) {
+        [fh seekToEndOfFile];
+        [fh writeData:logData];
+        [fh closeFile];
     }
 }
 

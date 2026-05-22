@@ -716,15 +716,19 @@ class TLParser: NSObject {
                     newFlags &= ~(1 << 25)
                     newFlags &= ~(1 << 5)
                 }
-                
-                if UserDefaults.standard.bool(forKey: "disableForwardRestriction") || 
-                   UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") {
+
+                // Only clear noforwards flags if they are actually set —
+                // unconditionally clearing them on every message caused
+                // pересериализацию обычных сообщений и ломало rich notifications.
+                let hasNoForwards = (Int(data.flags) & (1 << 14)) != 0 || (Int(data.flags) & (1 << 26)) != 0
+                if hasNoForwards && (UserDefaults.standard.bool(forKey: "disableForwardRestriction") ||
+                   UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct")) {
                     newFlags &= ~(1 << 14)
                     newFlags &= ~(1 << 26)
                 }
-                
+
                 let (newMessageText, newEntities) = applyTTLIndicator(message: data.message, entities: data.entities, shouldApply: isDestructing)
-                
+
                 if newFlags != data.flags || newMessageText != data.message || (newEntities?.count ?? 0) != (data.entities?.count ?? 0) {
                     if (newEntities?.count ?? 0) > 0 {
                         newFlags |= (1 << 7)
@@ -743,9 +747,11 @@ class TLParser: NSObject {
                     newFlags &= ~(1 << 25)
                     newFlags &= ~(1 << 5)
                 }
-                
-                if UserDefaults.standard.bool(forKey: "disableForwardRestriction") || 
-                   UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct") {
+
+                // Only clear noforwards flags if they are actually set
+                let hasNoForwardsChatMsg = (Int(data.flags) & (1 << 14)) != 0 || (Int(data.flags) & (1 << 26)) != 0
+                if hasNoForwardsChatMsg && (UserDefaults.standard.bool(forKey: "disableForwardRestriction") ||
+                   UserDefaults.standard.bool(forKey: "LeadAntiSelfDestruct")) {
                     newFlags &= ~(1 << 14)
                     newFlags &= ~(1 << 26)
                 }
@@ -762,7 +768,7 @@ class TLParser: NSObject {
             case let .updateShortSentMessage(data):
                 let newMedia = data.media.map { stripTTLMedia($0, messageId: data.id) }
                 let isMediaDestructing = selfDestructingMessageIds.contains(data.id) || data.ttlPeriod != nil || (Int(data.flags) & Int(1 << 25)) != 0
-                var newFlags = isMediaDestructing ? (data.flags & ~(1 << 25) & ~(1 << 5)) : data.flags
+                let newFlags = isMediaDestructing ? (data.flags & ~(1 << 25) & ~(1 << 5)) : data.flags
                 
                 if newFlags != data.flags || isMediaDestructing {
                     newResult = Api.Updates.updateShortSentMessage(Api.Updates.Cons_updateShortSentMessage(flags: newFlags, id: data.id, pts: data.pts, ptsCount: data.ptsCount, date: data.date, media: newMedia, entities: data.entities, ttlPeriod: isMediaDestructing ? nil : data.ttlPeriod))
@@ -885,14 +891,9 @@ class TLParser: NSObject {
     }
 
     @objc static func handleResponse(_ data: NSData, functionID: NSNumber) -> NSData? {
-        // Apply all patches (deleted indicators, anti-self-destruct, noforwards)
-        // stripAntiSelfDestruct returns nil if no modification was made, or the serialized patched data.
-        if let patchedData = stripAntiSelfDestruct(data) {
-            return patchedData
-        }
-
-        // If no modification was made, return the original data to preserve performance and avoid re-serialization bugs.
-        return data
+        // Returns patched data only if something was actually modified.
+        // Returning nil means "no change" — caller uses original data as-is.
+        return stripAntiSelfDestruct(data)
     }
     // MARK: - Forward Cloning (Universal Forwarding)
 

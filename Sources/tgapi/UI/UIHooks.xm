@@ -1,12 +1,15 @@
 #import <UIKit/UIKit.h>
 #import "Headers.h"
+#import "../Logger/Logger.h"
+#import <objc/runtime.h>
+#import <objc/message.h>
 
 @interface ASDisplayNode : NSObject
 @property (atomic, assign, readonly) UIView *view;
 @property (atomic, copy, readonly) NSArray *subnodes;
 @property (atomic, copy, readwrite) NSString *accessibilityLabel;
-@property (nonatomic, strong) UILongPressGestureRecognizer *longPressGesture;
-- (void)__handleSettingsTabLongPress:(UILongPressGestureRecognizer *)gesture;
+@property (nonatomic, strong) UILongPressGestureRecognizer *leadLongPressGesture;
+- (ASDisplayNode *)supernode;
 - (void)setNeedsLayout;
 - (void)layoutIfNeeded;
 @end
@@ -26,7 +29,32 @@
 @property (nonatomic, strong) id peer;
 @end
 
-static __weak TGLocalization *TGLocalizationShared = nil;
+@interface LegacyComponentsGlobals : NSObject
++ (id)provider;
+@end
+
+@protocol LegacyComponentsGlobalsProvider
+- (TGLocalization *)effectiveLocalization;
+@end
+
+static TGLocalization *TGLocalizationShared = nil;
+
+static TGLocalization *getActiveTGLocalization(void) {
+    if (TGLocalizationShared) return TGLocalizationShared;
+    @try {
+        Class cls = objc_getClass("LegacyComponentsGlobals");
+        if (cls && [cls respondsToSelector:@selector(provider)]) {
+            id provider = [cls performSelector:@selector(provider)];
+            if ([provider respondsToSelector:@selector(effectiveLocalization)]) {
+                TGLocalization *loc = [provider performSelector:@selector(effectiveLocalization)];
+                if (loc) { TGLocalizationShared = loc; return loc; }
+            }
+        }
+    } @catch (...) {}
+    return nil;
+}
+
+void showUI();
 
 %hook _TtC10TelegramUI29ChatPresentationInterfaceState
 - (BOOL)copyProtectionEnabled {
@@ -53,6 +81,41 @@ static __weak TGLocalization *TGLocalizationShared = nil;
     }
     return %orig;
 }
+
+// Suppress ad attribute so Telegram treats the message as non-sponsored.
+// This catches ads that were already cached (5-min cache) and bypasses
+// the API-level block in FunctionHandler.m for those cases.
+- (id)adAttribute {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableAllAds]) {
+        return nil;
+    }
+    return %orig;
+}
+%end
+
+// ============================================================
+// Send as Voice: make audio files appear and behave as voice messages.
+// Hooks TelegramMediaFile.isVoice — when kSendAsVoice is enabled and
+// the file has an audio mimeType, report it as a voice message.
+// ============================================================
+@interface _TtC12TelegramCore16TelegramMediaFile : NSObject
+- (NSString *)mimeType;
+@end
+
+%hook _TtC12TelegramCore16TelegramMediaFile
+
+- (BOOL)isVoice {
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kSendAsVoice]) {
+        return %orig;
+    }
+    if (%orig) return YES;
+    NSString *mime = [self mimeType];
+    if ([mime hasPrefix:@"audio/"]) {
+        return YES;
+    }
+    return NO;
+}
+
 %end
 
 %hook ChatMessageItem
@@ -73,15 +136,87 @@ static __weak TGLocalization *TGLocalizationShared = nil;
 }
 %end
 
+static BOOL _leadGestureAttached = NO;
+
+// Helper target object for late-attached gestures
+@interface LeadGestureTarget : NSObject
+@end
+@implementation LeadGestureTarget
+- (void)handleLongPress:(UILongPressGestureRecognizer *)gr {
+    if (gr.state == UIGestureRecognizerStateBegan) showUI();
+}
+@end
+static LeadGestureTarget *_leadGestureTarget = nil;
+
+static void tryAttachLeadGesture(void);
+
 %hook TGLocalization
+- (id)get:(id)key {
+    TGLocalizationShared = self;
+    if (!_leadGestureAttached) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            tryAttachLeadGesture();
+        });
+    }
+    return %orig;
+}
+
 - (id)initWithVersion:(int)a code:(id)b dict:(id)c isActive:(BOOL)d {
     TGLocalization *instance = %orig;
-    if (a != 96929692 && instance) {
+    if (instance) {
         TGLocalizationShared = instance;
+        // Settings may already be rendered — try to attach gesture now
+        if (!_leadGestureAttached) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                tryAttachLeadGesture();
+            });
+        }
     }
     return instance;
 }
 %end
+
+static void tryAttachLeadGestureInView(UIView *view) {
+    if (!view) return;
+    if ([NSStringFromClass([view class]) isEqualToString:@"Display.AccessibilityAreaNode"]) {
+        NSString *label = view.accessibilityLabel;
+        TGLocalization *loc = getActiveTGLocalization();
+        if (label.length > 0 && loc) {
+            NSString *supportStr = [loc get:@"Settings.Support"];
+            if (supportStr.length > 0 && ![supportStr isEqualToString:@"Settings.Support"] &&
+                [[label lowercaseString] containsString:[supportStr lowercaseString]]) {
+                UIView *parent = view.superview;
+                if (parent) {
+                    BOOL alreadyHas = NO;
+                    for (UIGestureRecognizer *g in parent.gestureRecognizers) {
+                        if ([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                            alreadyHas = YES; break;
+                        }
+                    }
+                    if (!alreadyHas) {
+                        if (!_leadGestureTarget) _leadGestureTarget = [LeadGestureTarget new];
+                        UILongPressGestureRecognizer *gr = [[UILongPressGestureRecognizer alloc]
+                            initWithTarget:_leadGestureTarget action:@selector(handleLongPress:)];
+                        [parent addGestureRecognizer:gr];
+                        _leadGestureAttached = YES;
+                        customLog2(@"[Lead] late-attach OK: %@", label);
+                    }
+                }
+            }
+        }
+        return;
+    }
+    for (UIView *sub in view.subviews) {
+        tryAttachLeadGestureInView(sub);
+        if (_leadGestureAttached) return;
+    }
+}
+
+static void tryAttachLeadGesture(void) {
+    if (_leadGestureAttached) return;
+    UIWindow *window = UIApplication.sharedApplication.keyWindow;
+    if (window) tryAttachLeadGestureInView(window);
+}
 
 void showUI() {
 	Lead *ui = [Lead new];
@@ -94,71 +229,182 @@ void showUI() {
 	}
 }
 
+
+
 // ============================================================
-// Settings Long-Press — only way to open Lead menu
-// Long-press the "Telegram Features" row in Settings → opens menu
+// Long-press to open Lead menu on "Ask a Question" row.
+//
+// Root cause of the language bug: didEnterHierarchy fires BEFORE
+// update() sets accessibilityLabel, so the label is always empty
+// at that point. The fix: hook setAccessibilityLabel: on
+// AccessibilityAreaNode — it's called from update() with the
+// correct localized text, regardless of language.
+//
+// "Ask a Question" is always id:0 in the .support section —
+// its parent is always PeerInfoScreenDisclosureItemNode.
+// We identify it by checking the parent node class + label.
 // ============================================================
 
 %hook ASDisplayNode
-%property (nonatomic, strong) UILongPressGestureRecognizer *longPressGesture;
 
-- (void)didLoad {
+%property (nonatomic, strong) UILongPressGestureRecognizer *leadLongPressGesture;
+
+- (void)setAccessibilityLabel:(NSString *)label {
     %orig;
-}
 
-%new
-- (void)__handleSettingsTabLongPress:(UILongPressGestureRecognizer *)gesture {
-    if (gesture.state == UIGestureRecognizerStateBegan) {
-		showUI();
+    if (![NSStringFromClass([self class]) isEqualToString:@"Display.AccessibilityAreaNode"]) return;
+    if (!label || label.length == 0) return;
+
+    ASDisplayNode *parent = [self supernode];
+    if (!parent) return;
+    if (![NSStringFromClass([parent class]) containsString:@"DisclosureItemNode"]) return;
+
+    NSString *lower = [label lowercaseString];
+    BOOL isSupportRow = NO;
+
+    // 1. Hardcoded common languages
+    NSArray *known = @[
+        @"ask a question", @"\u0437\u0430\u0434\u0430\u0442\u044c \u0432\u043e\u043f\u0440\u043e\u0441",
+        @"hacer una pregunta", @"poser une question",
+        @"about turrit", @"\u043e turrit", @"leadgram",
+        @"stellen sie eine frage", @"fai una domanda", @"bir soru sor",
+        @"\uc9c8\ubb38\ud558\uae30", @"\u63d0\u95ee", @"\u8cea\u554f\u3059\u308b"
+    ];
+    for (NSString *s in known) {
+        if ([lower containsString:s]) { isSupportRow = YES; break; }
     }
-}
-%end
 
-%hook PeerInfoScreenItemNode
-- (void)didEnterHierarchy {
-    %orig;
-
-    ASDisplayNode *mainNode = self;
-
-	if (!mainNode.longPressGesture) {
-		mainNode.longPressGesture = [[UILongPressGestureRecognizer alloc]
-		    initWithTarget:mainNode
-		            action:@selector(__handleSettingsTabLongPress:)];
-	}
-
-    for (ASDisplayNode *child in mainNode.subnodes) {
-        if ([NSStringFromClass([child class]) isEqualToString:@"Display.AccessibilityAreaNode"]) {
-            
-            // By default, the button is "Ask a Question"
-            NSString *localizedTitle = @"Ask a Question";
-            
-            // Try to get the actual localized version from Telegram
-            if (TGLocalizationShared) {
-                NSString *resultTitle = [TGLocalizationShared get:@"Settings.Support"];
-                if (resultTitle.length > 0 && ![resultTitle isEqualToString:@"Settings.Support"]) {
-                    localizedTitle = resultTitle;
-                }
-            }
-
-            // We match against either the exact localized title or the English default
-            BOOL isTarget = [child.accessibilityLabel isEqualToString:localizedTitle] || 
-                            [child.accessibilityLabel isEqualToString:@"Ask a Question"] ||
-                            [child.accessibilityLabel isEqualToString:@"About Turrit"] ||
-                            [child.accessibilityLabel isEqualToString:@"О Turrit"];
-
-            if (isTarget) {
-                if (![mainNode.view.gestureRecognizers containsObject:mainNode.longPressGesture]) {
-                    [mainNode.view addGestureRecognizer:mainNode.longPressGesture];
-                }
+    // 2. Active TGLocalization — works for any language
+    if (!isSupportRow) {
+        TGLocalization *loc = getActiveTGLocalization();
+        if (loc) {
+            NSString *str = [loc get:@"Settings.Support"];
+            if (str.length > 0 && ![str isEqualToString:@"Settings.Support"]) {
+                isSupportRow = [lower containsString:[str lowercaseString]];
             }
         }
     }
+
+    if (!isSupportRow) {
+        customLog2(@"[Lead] unmatched label: %@", label);
+        return;
+    }
+
+    if (!parent.leadLongPressGesture) {
+        parent.leadLongPressGesture = [[UILongPressGestureRecognizer alloc]
+            initWithTarget:parent
+                    action:@selector(__handleLeadLongPress:)];
+    }
+
+    UIView *pv = parent.view;
+    if (pv && ![pv.gestureRecognizers containsObject:parent.leadLongPressGesture]) {
+        [pv addGestureRecognizer:parent.leadLongPressGesture];
+        customLog2(@"[Lead] gesture attached: %@", label);
+    }
 }
+
+%new
+- (void)__handleLeadLongPress:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        showUI();
+    }
+}
+
 %end
 
-// ============================================================
-// First-launch welcome alert.
-// ============================================================
+
+
+// // ============================================================
+// // Lead nav bar button — liquid glass shield, injected into
+// // GlassContextExtractableContainer (rightButtonsBackground).
+// //
+// // GlassContextExtractableContainer is a public UIView subclass
+// // from GlassBackgroundComponent module. It wraps rightButtonsContainer
+// // which holds the Edit button. We hook its layoutSubviews and add
+// // our button to its contentView (normalContentView).
+// // ============================================================
+// 
+// @interface _TtC24GlassBackgroundComponent31GlassContextExtractableContainer : UIView
+// @property (nonatomic, strong, readonly) UIView *contentView;
+// @end
+// 
+// %hook _TtC24GlassBackgroundComponent31GlassContextExtractableContainer
+// 
+// - (void)layoutSubviews {
+//     %orig;
+//     @try {
+//         // Already injected
+//         if ([self viewWithTag:9876]) return;
+// 
+//         // contentView holds rightButtonsContainer
+//         UIView *cv = self.contentView;
+//         if (!cv) return;
+// 
+//         // rightButtonsContainer must have a NavigationButton subview
+//         BOOL hasNavBtn = NO;
+//         for (UIView *sub in cv.subviews) {
+//             NSString *cls = NSStringFromClass([sub class]);
+//             if ([cls containsString:@"NavigationButton"] || [cls containsString:@"HighlightableButton"]) {
+//                 hasNavBtn = YES; break;
+//             }
+//         }
+//         if (!hasNavBtn) return;
+// 
+//         CGFloat h = cv.bounds.size.height;
+//         if (h < 20 || h > 60) return;
+// 
+//         // Build liquid glass button
+//         CGFloat btnW = h;
+//         UIButton *leadBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+//         leadBtn.tag = 9876;
+//         leadBtn.frame = CGRectMake(-(btnW + 8), 0, btnW, h);
+//         leadBtn.layer.cornerRadius = h * 0.5;
+//         leadBtn.clipsToBounds = YES;
+// 
+//         // Blur background (liquid glass)
+//         UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial];
+//         UIVisualEffectView *glass = [[UIVisualEffectView alloc] initWithEffect:blur];
+//         glass.frame = leadBtn.bounds;
+//         glass.layer.cornerRadius = h * 0.5;
+//         glass.clipsToBounds = YES;
+//         glass.userInteractionEnabled = NO;
+//         [leadBtn insertSubview:glass atIndex:0];
+// 
+//         // Shield icon
+//         UIImage *icon = [UIImage systemImageNamed:@"shield.lefthalf.filled"];
+//         if (!icon) icon = [UIImage systemImageNamed:@"shield.fill"];
+//         UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration
+//             configurationWithPointSize:15 weight:UIImageSymbolWeightMedium];
+//         if (cfg) icon = [icon imageByApplyingSymbolConfiguration:cfg];
+//         [leadBtn setImage:icon forState:UIControlStateNormal];
+//         leadBtn.tintColor = [UIColor labelColor];
+// 
+//         [leadBtn addTarget:self action:@selector(__leadShieldTap)
+//               forControlEvents:UIControlEventTouchUpInside];
+// 
+//         // Widen contentView to show the button
+//         CGRect cvf = cv.frame;
+//         cvf.origin.x -= (btnW + 8);
+//         cvf.size.width += (btnW + 8);
+//         cv.frame = cvf;
+//         cv.clipsToBounds = NO;
+// 
+//         [cv addSubview:leadBtn];
+//         customLog2(@"[Lead] shield button injected h=%.0f", h);
+//     } @catch (NSException *e) {
+//         customLog2(@"[Lead] shield inject error: %@", e);
+//     }
+// }
+// 
+// %new
+// - (void)__leadShieldTap {
+//     showUI();
+// }
+// 
+// %end
+// 
+
+
 static void showWelcomeAlertIfNeeded() {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     if ([defaults boolForKey:@"LeadWelcomeShown"]) return;
@@ -169,7 +415,7 @@ static void showWelcomeAlertIfNeeded() {
 
     UIAlertController *alert = [UIAlertController
         alertControllerWithTitle:@"Lead"
-        message:@"Lead has been successfully injected into Telegram.\n\nTo open the tweak menu: long-press the \"Ask a Question\" or \"About Turrit\" row in the Settings tab."
+        message:@"Lead has been successfully injected into Telegram.\n\nTo open the tweak menu: tap the shield button in the top-right corner of Settings, or long-press the \"Ask a Question\" row."
         preferredStyle:UIAlertControllerStyleAlert];
 
     void (^markShown)(void) = ^{
@@ -378,6 +624,7 @@ static NSHashTable *activeMessageNodes = nil;
             peerId = [[NSUserDefaults standardUserDefaults] integerForKey:@"LeadLastKnownUserId"];
         }
         recursiveSearchAndInject(self, self, peerId);
+
     }
 
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kHideStories]) {
@@ -592,6 +839,29 @@ static NSHashTable *activeMessageNodes = nil;
 %end
 %end // SiriBypassHooks
 
+// ============================================================
+// Download Stories: auto-save story to camera roll when opened.
+// Hooks StoryItemSetContainerComponent.View — calls requestSave
+// automatically when the story becomes visible.
+// ============================================================
+%hook _TtCC20StoryContainerScreen32StoryItemSetContainerComponent4View
+
+- (void)didMoveToWindow {
+    %orig;
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kDownloadStories]) return;
+    if (!self.window) return;
+    // Delay slightly so the story is fully loaded before saving
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        @try {
+            if ([[NSUserDefaults standardUserDefaults] boolForKey:kDownloadStories]) {
+                [self requestSave];
+            }
+        } @catch (NSException *e) {}
+    });
+}
+
+%end
+
 __attribute__((constructor))
 static void hook() {
     NSLog(@"[Lead] Tweak initializing...");
@@ -627,7 +897,6 @@ static void hook() {
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         %init(
-            PeerInfoScreenItemNode = objc_getClass("PeerInfoScreen.PeerInfoScreenItemNode"),
             ChatMessageItem = objc_getClass("_TtC10TelegramUI15ChatMessageItem"),
             ApiChat = objc_getClass("_TtC10TelegramUI11ApiChat"),
             _TtC10TelegramUI29ChatPresentationInterfaceState = objc_getClass("_TtC10TelegramUI29ChatPresentationInterfaceState"),
@@ -648,6 +917,13 @@ static void hook() {
 
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             showWelcomeAlertIfNeeded();
+        });
+
+        // Download Speed Boost — find FetchImpl.Impl via runtime class scan.
+        // The class name contains "FetchImpl" and "Impl" and lives in TelegramCore.
+        // We swizzle the init method to intercept defaultPartSize and maxPendingParts.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [LeadDownloadBoost install];
         });
     });
  }
