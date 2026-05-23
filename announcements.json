@@ -1,9 +1,9 @@
 [
   {
-    "title": "Lead 1.4.0 is ready!",
-    "message": "Added Ghost Exceptions: let selected users see your normal activity while Ghost Mode stays enabled for everyone else. Restored Anti-Edit. Added tap-to-open profiles from Ghost Exceptions, safer exception names, Hide Disappearing Label, and download speed boost options. Also improved Ghost Mode stability and settings behavior.",
+    "title": "Lead 1.4.1 is ready!",
+    "message": "• Added: Send videos as voice messages from the video preview\n  • Added: menu for viewing message edit history\n  • Improved: Extracting/Success statuses while audio is being extracted\n  • Fixed: Re-sending the same video no longer breaks normal/voice send mode",
     "type": "update",
-    "url": "https://t.me/Leadgramm",
-    "target_version": "1.4.0"
+    "url": "https://t.me/Leadgramm/63",
+    "target_version": "1.4.1"
   }
 ]
