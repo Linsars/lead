@@ -1,159 +1,96 @@
 #import <UIKit/UIKit.h>
 #import "Headers.h"
 #import "../Logger/Logger.h"
-#import <objc/runtime.h>
+#import <objc/message.h>
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
 
 // ============================================================
-// Premium Bypass v2
+// Premium Bypass — unlock Telegram Premium features
 // ============================================================
-// Telegram Premium features are gated by the server's "isPremium"
-// flag and local feature availability checks. This hooks multiple
-// layers to unlock premium features without a subscription.
-//
-// Targets:
-//   - AccountPremiumProxy  — core premium state check
-//   - PremiumConfiguration — server-pushed premium feature config
-//   - PremiumIntroUI       — subscription upsell screens
-//   - Individual feature gates (stickers, reactions, etc.)
+// Hooks premium gate checks at multiple levels:
+// 1. Account state — isPremium, isPremiumEnabled
+// 2. Feature gates — canUsePremiumStickers, animated emoji, etc.
+// 3. Visual indicators — restore premium badge
 // ============================================================
 
-NSUserDefaults *prefDefaults(void) {
-    static NSUserDefaults *d = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        d = [NSUserDefaults standardUserDefaults];
-    });
-    return d;
-}
-
-BOOL isPremiumBypassEnabled(void) {
-    return [prefDefaults() boolForKey:kPremiumBypass];
-}
-
-// ============================================================
-// Layer 1: Core Premium State
-// Hook the AccountPremiumProxy (TelegramCore framework)
-// which manages isPremium cached state
-// ============================================================
-
-%hook _TtC12TelegramCore21AccountPremiumProxy
+%hook(_TtC12TelegramCore18TelegramEngineImpl)
 
 - (BOOL)isPremium {
-    if (isPremiumBypassEnabled()) return YES;
-    return %orig;
-}
-
-// Also override the subscription validity check
-- (BOOL)isExpired {
-    if (isPremiumBypassEnabled()) return NO;
-    return %orig;
-}
-
-%end
-
-// ============================================================
-// Layer 2: Premium Configuration
-// The server pushes premium feature settings via
-// PremiumConfiguration. Many features are gated by
-// config values set to 0 (disabled) for non-premium users.
-// ============================================================
-
-%hook _TtC12TelegramCore22PremiumConfiguration
-
-// Story-related premium feature flags
-- (int32_t)storiesEnabled {
-    if (isPremiumBypassEnabled()) return 1;
-    return %orig;
-}
-
-- (int32_t)storiesStealthModeEnabled {
-    if (isPremiumBypassEnabled()) return 1;
-    return %orig;
-}
-
-- (int32_t)storiesPermanentViewsEnabled {
-    if (isPremiumBypassEnabled()) return 1;
-    return %orig;
-}
-
-- (int32_t)storiesBoostEnabled {
-    if (isPremiumBypassEnabled()) return 1;
-    return %orig;
-}
-
-- (int32_t)storiesForwardingEnabled {
-    if (isPremiumBypassEnabled()) return 1;
-    return %orig;
-}
-
-// Reaction and interaction features
-- (int32_t)superReactionsEnabled {
-    if (isPremiumBypassEnabled()) return 1;
-    return %orig;
-}
-
-- (int32_t)messageEffectsEnabled {
-    if (isPremiumBypassEnabled()) return 1;
-    return %orig;
-}
-
-// Upload/Download features
-- (int32_t)uploadQuicktimeVideoEnabled {
-    if (isPremiumBypassEnabled()) return 1;
-    return %orig;
-}
-
-%end
-
-// ============================================================
-// Layer 3: Individual Premium Feature Gates
-// Various TelegramUI components check premium availability
-// before showing premium-only UI elements.
-// ============================================================
-
-%hook _TtC12TelegramCore19PremiumGiftInfo
-
-- (BOOL)canGiftPremium {
-    if (isPremiumBypassEnabled()) return NO; // Don't offer gifting
-    return %orig;
-}
-
-%end
-
-// Hook the premium sticker handling - allow animated stickers even without premium
-%hook _TtC10TelegramUI15StickerPanelNode
-
-- (BOOL)isPremiumStickerAllowed {
-    if (isPremiumBypassEnabled()) return YES;
-    return %orig;
-}
-
-%end
-
-// ============================================================
-// Layer 4: Premium Intro Screen Suppression
-// When attempting premium-only actions, Telegram shows a
-// "Subscribe to Premium" interstitial. We suppress it.
-// ============================================================
-
-%hook _TtC10TelegramUI22PremiumIntroController
-
-- (void)viewDidAppear:(BOOL)animated {
-    if (isPremiumBypassEnabled()) {
-        // Dismiss immediately
-        [self dismissViewControllerAnimated:NO completion:nil];
-        return;
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
+        return YES;
     }
-    %orig;
+    return %orig;
+}
+
+- (BOOL)isPremiumEnabledForAccount {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
+        return YES;
+    }
+    return %orig;
 }
 
 %end
 
-// Also hook the premium button/label generation
-%hook _TtC10TelegramUI19PremiumGradientView
+%hook(_TtC12TelegramCore21AccountPremiumProxy)
 
-+ (BOOL)needsPremium {
-    if (isPremiumBypassEnabled()) return NO;
+- (BOOL)isPremium {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
+        return YES;
+    }
+    return %orig;
+}
+
+- (BOOL)hasAnyPremium {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
+        return YES;
+    }
+    return %orig;
+}
+
+%end
+
+%hook(_TtC12TelegramCore10PremiumGift)
+
+- (BOOL)canSendGift {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
+        return YES;
+    }
+    return %orig;
+}
+
+%end
+
+%hook(_TtC10TelegramUI41ChatControllerNavigationBarAccessoryNode)
+
+- (BOOL)isPremiumRequired {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
+        return NO;
+    }
+    return %orig;
+}
+
+%end
+
+// Premium sticker/animation gating
+%hook(_TtC12TelegramCore26PremiumStickerConfiguration)
+
+- (BOOL)canUsePremiumStickers {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
+        return YES;
+    }
+    return %orig;
+}
+
+%end
+
+%hook(_TtC12TelegramCore19PremiumReactionModel)
+
+- (BOOL)canUsePremiumReactions {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
+        return YES;
+    }
     return %orig;
 }
 
@@ -163,17 +100,21 @@ BOOL isPremiumBypassEnabled(void) {
 // ============================================================
 // Unlock Translation
 // ============================================================
-// Telegram's built-in translation is region-locked (blocked in
-// CN/RU among others) and sometimes requires premium.
-// We hook the language model availability check to allow
-// translation regardless of locale.
+// Telegram's built-in translator is region-gated (blocked in
+// Russia, China, etc.). Hook the locale/premium check.
 // ============================================================
 
-%hook _TtC12TelegramCore25TranslationConfiguration
+%hook(_TtC12TelegramCore24TranslationFeatureManager)
 
-// The locale filter that blocks certain regions
-- (BOOL)isAvailableForLocale:(id)locale {
-    if (isPremiumBypassEnabled() || [prefDefaults() boolForKey:kUnlockTranslation]) {
+- (BOOL)isTranslationAvailableForLocale:(NSLocale *)locale {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kUnlockTranslation]) {
+        return YES; // Override region check
+    }
+    return %orig;
+}
+
+- (BOOL)canTranslate {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kUnlockTranslation]) {
         return YES;
     }
     return %orig;
@@ -181,36 +122,16 @@ BOOL isPremiumBypassEnabled(void) {
 
 %end
 
-%hook _TtC12TelegramCore21TranslationManager
+// Also bypass premium requirement for translation
+%hook(_TtC12TelegramCore12TranslationUI)
 
-- (BOOL)canTranslateMessages {
-    if ([prefDefaults() boolForKey:kUnlockTranslation]) return YES;
-    return %orig;
-}
-
-// Allow translating even without premium
-- (BOOL)canTranslateMessagesWithPremiumCheck:(BOOL)checkPremium {
-    if ([prefDefaults() boolForKey:kUnlockTranslation]) return YES;
-    return %orig;
-}
-
-// Override the available target languages
-- (NSArray *)availableLanguages {
-    if ([prefDefaults() boolForKey:kUnlockTranslation]) {
-        // Return all available languages, not just the locale-filtered subset
-        return %orig; // orig returns the full list
+- (BOOL)isTranslationPremiumRequired {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kUnlockTranslation]) {
+        return NO;
     }
     return %orig;
 }
 
 %end
 
-// UI-level: ensure translation menu option is always shown
-%hook _TtC10TelegramUI21ChatControllerNode
-
-- (BOOL)shouldShowTranslateMenu {
-    if ([prefDefaults() boolForKey:kUnlockTranslation]) return YES;
-    return %orig;
-}
-
-%end
+#pragma clang diagnostic pop

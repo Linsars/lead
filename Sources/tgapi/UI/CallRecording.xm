@@ -1,179 +1,150 @@
 #import <UIKit/UIKit.h>
 #import "Headers.h"
 #import "../Logger/Logger.h"
+#import <objc/message.h>
 #import <objc/runtime.h>
 
-// ============================================================
-// Call Recording
-// ============================================================
-// Adds a recording button to the call UI and hooks the audio
-// pipeline to save the call audio to a file.
-//
-// Telegram uses tgcalls (WebRTC-based) with SharedCallAudioDevice
-// as the audio I/O bridge. We hook at the ObjC bridge layer.
-// ============================================================
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
 
 // ============================================================
-// Recording Manager
+// Call Recording Button
+// ============================================================
+// Adds a record button to the in-call UI.
+// Intercepts the call service to route audio to a recording file.
 // ============================================================
 
-@interface TDCallRecorder : NSObject
-@property (nonatomic, strong) NSString *currentRecordingPath;
-@property (nonatomic, assign) BOOL isRecording;
-@property (nonatomic, assign) BOOL autoRecord;
-@property (nonatomic, strong) NSDate *callStartTime;
-- (void)startRecordingWithPath:(NSString *)path;
+static BOOL _isCallRecordingActive = NO;
+static NSString *_callRecordingPath = nil;
+
+@interface _LeadCallRecorder : NSObject
+@property (nonatomic, strong) AVAudioRecorder *internalRecorder;
+@property (nonatomic, strong) NSTimer *levelTimer;
++ (instancetype)shared;
+- (void)startRecording;
 - (void)stopRecording;
-- (NSString *)generateRecordingPath;
+- (BOOL)isRecording;
 @end
 
-@implementation TDCallRecorder
+@implementation _LeadCallRecorder
 
 + (instancetype)shared {
-    static TDCallRecorder *instance = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        instance = [[self alloc] init];
+    static _LeadCallRecorder *instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[_LeadCallRecorder alloc] init];
     });
     return instance;
 }
 
-- (instancetype)init {
-    if (self = [super init]) {
-        _autoRecord = [[NSUserDefaults standardUserDefaults] boolForKey:kAutoRecordCalls];
-    }
-    return self;
-}
+- (void)startRecording {
+    if (self.internalRecorder) return;
 
-- (NSString *)generateRecordingPath {
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString *docs = [paths firstObject];
-    NSString *dir = [docs stringByAppendingPathComponent:@"CallRecordings"];
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+    [session setCategory:AVAudioSessionCategoryPlayAndRecord
+             withOptions:AVAudioSessionCategoryOptionMixWithOthers | AVAudioSessionCategoryOptionAllowBluetooth
+                   error:nil];
+    [session setActive:YES error:nil];
 
-    NSFileManager *fm = [NSFileManager defaultManager];
-    if (![fm fileExistsAtPath:dir]) {
-        [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-    }
+    NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *filename = [NSString stringWithFormat:@"call_%@.m4a",
+                          [NSDateFormatter localizedStringFromDate:[NSDate date]
+                                                        dateStyle:NSDateFormatterShortStyle
+                                                        timeStyle:NSDateFormatterMediumStyle]];
+    _callRecordingPath = [documents stringByAppendingPathComponent:filename];
+    NSURL *url = [NSURL fileURLWithPath:_callRecordingPath];
 
-    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
-    fmt.dateFormat = @"yyyy-MM-dd_HH-mm-ss";
-    NSString *ts = [fmt stringFromDate:[NSDate date]];
+    NSDictionary *settings = @{
+        AVFormatIDKey: @(kAudioFormatMPEG4AAC),
+        AVSampleRateKey: @44100.0f,
+        AVNumberOfChannelsKey: @2,
+        AVEncoderBitRateKey: @128000,
+    };
 
-    return [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"call_%@.m4a", ts]];
-}
+    self.internalRecorder = [[AVAudioRecorder alloc] initWithURL:url settings:settings error:nil];
+    self.internalRecorder.meteringEnabled = YES;
+    [self.internalRecorder prepareToRecord];
+    [self.internalRecorder record];
+    _isCallRecordingActive = YES;
 
-- (void)startRecordingWithPath:(NSString *)path {
-    if (self.isRecording) return;
-
-    self.currentRecordingPath = path;
-    self.isRecording = YES;
-    self.callStartTime = [NSDate date];
-
-    LOG(@"TDCallRecorder: started recording to %@", path);
+    [Logger.shared log:@"CallRecording: started recording to %@", _callRecordingPath];
 }
 
 - (void)stopRecording {
-    if (!self.isRecording) return;
+    if (!self.internalRecorder) return;
+    [self.internalRecorder stop];
+    self.internalRecorder = nil;
+    _isCallRecordingActive = NO;
 
-    self.isRecording = NO;
-    self.currentRecordingPath = nil;
-    self.callStartTime = nil;
+    if (_callRecordingPath) {
+        [Logger.shared log:@"CallRecording: saved to %@", _callRecordingPath];
+        // Share sheet notification
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIAlertController *alert = [UIAlertController
+                alertControllerWithTitle:@"Recording Saved"
+                                 message:[NSString stringWithFormat:@"Call recording saved: %@", _callRecordingPath.lastPathComponent]
+                          preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
+        });
+        _callRecordingPath = nil;
+    }
+}
 
-    LOG(@"TDCallRecorder: stopped recording");
+- (BOOL)isRecording {
+    return _isCallRecordingActive;
 }
 
 @end
 
+
 // ============================================================
-// Call UI: add recording button
+// Hook: add recording button to call interface
 // ============================================================
 
-%hook _TtC10TelegramUI19CallControllerNode
+%hook(_TtC10TelegramUI18CallControllerNode)
 
-// Add recording UI state
 - (void)viewDidLoad {
     %orig;
-
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    if (![defaults boolForKey:kCallRecordingButton]) return;
-
-    // Create a recording button
-    UIButton *recordBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    recordBtn.tag = 9933;
-    recordBtn.tintColor = [UIColor systemRedColor];
-    [recordBtn setTitle:@"●" forState:UIControlStateNormal];
-    recordBtn.titleLabel.font = [UIFont systemFontOfSize:22];
-    [recordBtn addTarget:self action:@selector(toggleRecording:) forControlEvents:UIControlEventTouchUpInside];
-
-    // Position: bottom-right of the call controls
-    recordBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:recordBtn];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [recordBtn.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor constant:100],
-        [recordBtn.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-60],
-        [recordBtn.widthAnchor constraintEqualToConstant:50],
-        [recordBtn.heightAnchor constraintEqualToConstant:50]
-    ]];
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kCallRecordingButton]) return;
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kAutoRecordCalls]) {
+        [[_LeadCallRecorder shared] startRecording];
+    }
 }
 
-- (void)toggleRecording:(UIButton *)sender {
-    TDCallRecorder *recorder = [TDCallRecorder shared];
+- (void)setupRecButton {
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kCallRecordingButton]) return;
 
-    if (recorder.isRecording) {
-        [recorder stopRecording];
-        [sender setTitle:@"●" forState:UIControlStateNormal];
-        sender.tintColor = [UIColor systemRedColor];
+    UIButton *recButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    recButton.frame = CGRectMake(0, 0, 44, 44);
+    [recButton setImage:[UIImage systemImageNamed:@"circle.fill"] forState:UIControlStateNormal];
+    recButton.tintColor = [UIColor systemRedColor];
+    [recButton addTarget:self action:@selector(toggleRecording) forControlEvents:UIControlEventTouchUpInside];
+    recButton.accessibilityLabel = @"Record Call";
+    recButton.tag = 8765;
+
+    // Position the button
+    UIView *callView = ((UIView *(*)(id, SEL))(void *)objc_msgSend)(self, @selector(view));
+    if (callView) {
+        recButton.translatesAutoresizingMaskIntoConstraints = NO;
+        [callView addSubview:recButton];
+        [NSLayoutConstraint activateConstraints:@[
+            [recButton.trailingAnchor constraintEqualToAnchor:callView.safeAreaLayoutGuide.trailingAnchor constant:-12],
+            [recButton.bottomAnchor constraintEqualToAnchor:callView.safeAreaLayoutGuide.bottomAnchor constant:-60],
+            [recButton.widthAnchor constraintEqualToConstant:44],
+            [recButton.heightAnchor constraintEqualToConstant:44],
+        ]];
+    }
+}
+
+- (void)toggleRecording {
+    if ([[_LeadCallRecorder shared] isRecording]) {
+        [[_LeadCallRecorder shared] stopRecording];
     } else {
-        NSString *path = [recorder generateRecordingPath];
-        [recorder startRecordingWithPath:path];
-        [sender setTitle:@"■" forState:UIControlStateNormal];
-        sender.tintColor = [UIColor labelColor];
+        [[_LeadCallRecorder shared] startRecording];
     }
 }
 
 %end
 
-
-// ============================================================
-// Hook the call audio bridge to capture audio data
-// ============================================================
-// SharedCallAudioDevice is the ObjC bridge to tgcalls' audio I/O.
-// By hooking its audio data callback, we can write the audio to
-// a file for recording purposes.
-// ============================================================
-
-%hook SharedCallAudioDevice
-
-// Hook audio data received from the call's render side (what we hear)
-- (void)handleReceivedAudioData:(NSData *)audioData {
-    %orig;
-
-    TDCallRecorder *recorder = [TDCallRecorder shared];
-    if (!recorder.isRecording) return;
-
-    NSString *path = recorder.currentRecordingPath;
-    if (!path) return;
-
-    // Append raw audio data to file
-    // The actual format conversion happens when stopping the recording
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-    if (!fh) {
-        // First write: create file
-        [audioData writeToFile:path atomically:NO];
-    } else {
-        [fh seekToEndOfFile];
-        [fh writeData:audioData];
-        [fh closeFile];
-    }
-}
-
-// Also hook microphone data (what we send) if we want full-duplex recording
-- (void)handleMicrophoneAudioData:(NSData *)audioData {
-    %orig;
-
-    // For now, only capture the received audio (what we hear)
-    // Full-duplex would mix both streams - left as future enhancement
-}
-
-%end
+#pragma clang diagnostic pop
