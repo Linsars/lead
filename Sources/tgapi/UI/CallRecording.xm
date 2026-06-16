@@ -9,7 +9,7 @@
 // ============================================================
 // Call Recording Button — adds recording button during calls
 // ============================================================
-%hook _TtC10TelegramUI21CallControllerNode
+%hook _TtC15TelegramCallsUI20CallControllerNodeV2
 
 %new
 - (void)lead_toggleRecording {

@@ -1,12 +1,13 @@
 #import <UIKit/UIKit.h>
+#import "../Constants.h"
+#import "../Logger/Logger.h"
 #import "Headers.h"
-#import "Constants.h"
 
 // Account limit bypass: intercept the config update on Account class
 // and overwrite maximumNumberOfAccounts to no limit
 // All third-party clients do this — server sends a hint, we ignore it
 
-%hook _TtC12TelegramCore7AccountC
+%hook _TtC12TelegramCore7Account
 
 - (void)updateLimitsConfigurationFromConfig:(id)limitsConfig {
     %orig;
