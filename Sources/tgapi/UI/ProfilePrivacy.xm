@@ -18,6 +18,22 @@
         NSNumber *uid = ((id(*)(id,SEL))(void*)objc_msgSend)((id)peer, idSel);
         if (uid) {
             customLog(@"ProfileID: %@", uid);
+            // Add ID label to header via KVC (avoids ivar access)
+            UIView *contentView = [self valueForKey:@"_contentView"];
+            if (contentView && ![contentView viewWithTag:0xDEAD]) {
+                UILabel *idLabel = [[UILabel alloc] init];
+                idLabel.text = [NSString stringWithFormat:@"ID: %@", uid];
+                idLabel.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightRegular];
+                idLabel.textColor = [UIColor grayColor];
+                idLabel.textAlignment = NSTextAlignmentCenter;
+                idLabel.tag = 0xDEAD;
+                [contentView addSubview:idLabel];
+                idLabel.translatesAutoresizingMaskIntoConstraints = NO;
+                [NSLayoutConstraint activateConstraints:@[
+                    [idLabel.centerXAnchor constraintEqualToAnchor:contentView.centerXAnchor],
+                    [idLabel.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-4]
+                ]];
+            }
         }
     }
 }

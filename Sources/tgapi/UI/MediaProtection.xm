@@ -3,21 +3,15 @@
 #import "../Logger/Logger.h"
 
 // ============================================================
-// View Once Unlimited — 延时销毁确认，降低服务端检测风险
+// View Once Unlimited — suppress consume so media stays viewable
 // ============================================================
 
 %hook _TtC12TelegramCore19MessageHistoryView
 
 - (void)consumeMessageContentForMessageId:(int32_t)messageId peerId:(int64_t)peerId {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kViewOnceUnlimited]) {
-        customLog(@"ViewOnce: deferring consume for (%lld, %d)", peerId, messageId);
-        // 不丢掉 consume，只是延时执行（避免服务器检测）
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(86400 * NSEC_PER_SEC)),
-                      dispatch_get_main_queue(), ^{
-            // 一天后才真正发送consume，服务器侧看起来像用户一直没看
-            %orig;
-        });
-        return;
+        customLog(@"ViewOnce: suppressed consume for (%lld, %d)", peerId, messageId);
+        return; // Don't send consume — media stays available
     }
     %orig;
 }
