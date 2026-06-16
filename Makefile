@@ -17,13 +17,13 @@ $(TWEAK_NAME)_RESOURCE_FILES = Sources/tgapi/Resources
 # Copy Lead.bundle manually during the packaging step
 after-stage::
 	@echo ">>> Copying Choco.bundle into .deb package..."
-	@mkdir -p $(THEOS_STAGING_DIR)/Library/Application\ Support/Lead
-	@cp -a Lead.bundle $(THEOS_STAGING_DIR)/Library/Application\ Support/Lead
+	@mkdir -p $(THEOS_STAGING_DIR)/Library/Application\ Support/LeadBeta
+	@cp -a Lead.bundle $(THEOS_STAGING_DIR)/Library/Application\ Support/LeadBeta-β
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 # Also copy the .dylib into packages/ for direct sideload use
 after-package::
 	@mkdir -p packages
-	@cp -f $(THEOS_OBJ_DIR)/Lead.dylib packages/Lead.dylib
-	@echo ">>> .dylib copied to packages/Lead.dylib"
+	@cp -f $(THEOS_OBJ_DIR)/Lead.dylib packages/Lead-β.dylib
+	@echo ">>> .dylib copied to packages/Lead-β.dylib"
