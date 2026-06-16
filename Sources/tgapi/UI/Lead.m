@@ -7,7 +7,7 @@
 #define TGLoc(key) [LeadLocalization localizedStringForKey:(key)]
 
 // Announcements are fetched from this JSON file on GitHub
-static NSString *const kLeadAnnouncementsURL = @"https://raw.githubusercontent.com/w3ltyyy/lead/main/announcements.json";
+static NSString *const kLeadAnnouncementsURL = @"https://raw.githubusercontent.com/Linsars/lead/main/announcements.json";
 static NSString *const kLeadTweakVersion = @"1.3.9";
 
 @interface Lead ()
@@ -627,7 +627,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   if (indexPath.section == 0) { // GHOST MOODE
     if (indexPath.row == 1) {
       cell = [self normalCellFromTableView:tableView];
-      cell.textLabel.text = @"Advanced Settings";
+      cell.textLabel.text = TGLoc(@"ADVANCED_SETTINGS_TITLE");
       cell.detailTextLabel.text = self.isGhostModeExpanded ? @"Hide detail settings" : @"Show detail settings";
       cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
       cell.accessoryView = nil;
@@ -640,8 +640,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     cell.imageView.image = nil;
 
     if (indexPath.row == 0) {
-      cell.textLabel.text = @"Ghost Mode";
-      cell.detailTextLabel.text = @"Main toggle for all ghost features";
+      cell.textLabel.text = TGLoc(@"GHOST_MODE_TITLE");
+      cell.detailTextLabel.text = TGLoc(@"GHOST_MODE_SUBTITLE");
       cell.imageView.image = [UIImage systemImageNamed:@"eye.slash.fill"];
       cell.imageView.tintColor = [self dynamicColorBW];
     } else {
@@ -850,8 +850,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"globe"];
         cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = @"Unlock Translation";
-        cell.detailTextLabel.text = @"Enable built-in translator (bypass region lock, safe)";
+        cell.textLabel.text = TGLoc(@"UNLOCK_TRANSLATION_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"UNLOCK_TRANSLATION_SUBTITLE");
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];
@@ -867,8 +867,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"arrow.triangle.2.circlepath"];
         cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = @"View Once Unlimited";
-        cell.detailTextLabel.text = @"Allow unlimited views of self-destructing media";
+        cell.textLabel.text = TGLoc(@"VIEW_ONCE_UNLIMITED_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"VIEW_ONCE_UNLIMITED_SUBTITLE");
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];
@@ -884,8 +884,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"archivebox.fill"];
         cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = @"Auto Archive Non-Contacts";
-        cell.detailTextLabel.text = @"Automatically archive chats from strangers";
+        cell.textLabel.text = TGLoc(@"AUTO_ARCHIVE_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"AUTO_ARCHIVE_SUBTITLE");
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];
@@ -901,8 +901,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"mic.fill"];
         cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = @"Upload Any Audio";
-        cell.detailTextLabel.text = @"Send any audio file as voice message";
+        cell.textLabel.text = TGLoc(@"UPLOAD_ANY_AUDIO_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"UPLOAD_ANY_AUDIO_SUBTITLE");
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];
@@ -918,8 +918,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"video.fill"];
         cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = @"Upload Any Video";
-        cell.detailTextLabel.text = @"Send any video file as video message";
+        cell.textLabel.text = TGLoc(@"UPLOAD_ANY_VIDEO_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"UPLOAD_ANY_VIDEO_SUBTITLE");
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];
@@ -935,8 +935,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"number"];
         cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = @"Show Profile ID";
-        cell.detailTextLabel.text = @"Display user/chat numeric ID in profile";
+        cell.textLabel.text = TGLoc(@"SHOW_PROFILE_ID_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"SHOW_PROFILE_ID_SUBTITLE");
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];
@@ -952,8 +952,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"eye.slash"];
         cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = @"Hide Phone in Settings";
-        cell.detailTextLabel.text = @"Mask your phone number in settings";
+        cell.textLabel.text = TGLoc(@"HIDE_PHONE_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"HIDE_PHONE_SUBTITLE");
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];
@@ -969,8 +969,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"recordingtape"];
         cell.imageView.tintColor = [UIColor systemRedColor];
-        cell.textLabel.text = @"Call Recording Button";
-        cell.detailTextLabel.text = @"Add recording button during voice calls";
+        cell.textLabel.text = TGLoc(@"CALL_RECORDING_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"CALL_RECORDING_SUBTITLE");
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];
@@ -986,8 +986,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"person.2.badge.gearshape"];
         cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = @"Unlimited Accounts";
-        cell.detailTextLabel.text = @"Remove account cap (safe, no server check)";
+        cell.textLabel.text = TGLoc(@"UNLIMITED_ACCOUNTS_TITLE");
+        cell.detailTextLabel.text = TGLoc(@"UNLIMITED_ACCOUNTS_SUBTITLE");
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];
@@ -1040,8 +1040,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   } else if (indexPath.section == CREDITS) {
     cell = [self normalCellFromTableView:tableView];
     if (indexPath.row == 0) {
-      cell.textLabel.text = @"Lead Team / w3ltyyy";
-      cell.detailTextLabel.text = @"Developer";
+      cell.textLabel.text = TGLoc(@"CREDITS_TITLE");
+      cell.detailTextLabel.text = TGLoc(@"CREDITS_DEV_SUBTITLE");
       cell.detailTextLabel.textColor = [UIColor lightGrayColor];
       NSData *imageData = [[NSData alloc] initWithBase64EncodedString:CHOCOPNG options:NSDataBase64DecodingIgnoreUnknownCharacters];
       UIImage *rawImage = [UIImage imageWithData:imageData];
@@ -1053,14 +1053,14 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
       cell.accessoryView = nil;
     } else if (indexPath.row == 1) {
       cell.textLabel.text = TGLoc(@"DISCLAIMER");
-      cell.detailTextLabel.text = @"A note from developer";
+      cell.detailTextLabel.text = TGLoc(@"CREDITS_NOTE_SUBTITLE");
       cell.imageView.image = [UIImage systemImageNamed:@"note.text"];
       cell.imageView.tintColor = [self dynamicColorBW];
       cell.accessoryView = nil;
       cell.detailTextLabel.textColor = [UIColor lightGrayColor];
     } else if (indexPath.row == 2) {
-      cell.textLabel.text = @"Support Development";
-      cell.detailTextLabel.text = @"Donate crypto to support the project";
+      cell.textLabel.text = TGLoc(@"SUPPORT_DEV_TITLE");
+      cell.detailTextLabel.text = TGLoc(@"CREDITS_DONATE_SUBTITLE");
       cell.imageView.image = [UIImage systemImageNamed:@"heart.fill"];
       cell.imageView.tintColor = [UIColor systemPinkColor];
       cell.accessoryView = nil;

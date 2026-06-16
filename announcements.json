@@ -1,9 +1,1 @@
-[
-  {
-    "title": "Lead 1.4.2 is ready!",
-    "message": "• Added: Send videos as voice messages (with waveform)\n• Fixed: Voice button overlapping round video button in Swiftgram\n• Fixed: Private message button disappeared in channels\n• Fixed: App startup lag\n• Fixed: Waveform bars were too large and uniform\n• Fixed: Ghost Exceptions now correctly shows name/username",
-    "type": "update",
-    "url": "https://t.me/Leadgramm/67",
-    "target_version": "1.4.2"
-  }
-]
+[]
