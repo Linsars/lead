@@ -19,7 +19,7 @@
         if (uid) {
             customLog(@"ProfileID: %@", uid);
             // Add ID label to header via KVC (avoids ivar access)
-            UIView *contentView = [self valueForKey:@"_contentView"];
+            UIView *contentView = [(id)self valueForKey:@"_contentView"];
             if (contentView && ![contentView viewWithTag:0xDEAD]) {
                 UILabel *idLabel = [[UILabel alloc] init];
                 idLabel.text = [NSString stringWithFormat:@"ID: %@", uid];
