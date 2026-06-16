@@ -1,0 +1,87 @@
+name: 🔄 Sync Upstream
+
+on:
+  schedule:
+    # UTC 02:00 / 14:00 ≈ 北京时间 10:00 / 22:00
+    - cron: '0 2,14 * * *'
+  workflow_dispatch:
+    # 允许手动触发，带上可选分支参数
+    inputs:
+      upstream_branch:
+        description: 'Upstream branch to sync from'
+        default: main
+        required: false
+        type: string
+      target_branch:
+        description: 'Your fork branch to sync into'
+        default: main
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout fork (with full history)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_branch || 'main' }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔗 Add upstream remote
+        run: |
+          git remote add upstream https://github.com/w3ltyyy/lead.git
+          git remote -v
+
+      - name: ⬇️ Fetch upstream
+        run: |
+          git fetch upstream ${{ inputs.upstream_branch || 'main' }}
+
+      - name: ⚖️ Check divergence
+        id: check
+        run: |
+          BASE_HASH=$(git rev-parse HEAD)
+          UPSTREAM_HASH=$(git rev-parse upstream/${{ inputs.upstream_branch || 'main' }})
+          echo "Fork HEAD:  $BASE_HASH"
+          echo "Upstream:   $UPSTREAM_HASH"
+
+          if [ "$BASE_HASH" = "$UPSTREAM_HASH" ]; then
+            echo "✅ Already in sync — nothing to do."
+            echo "synced=true" >> $GITHUB_OUTPUT
+          else
+            BEHIND=$(git rev-list --count HEAD..upstream/${{ inputs.upstream_branch || 'main' }})
+            echo "🔙 Behind by $BEHIND commit(s)"
+            echo "synced=false" >> $GITHUB_OUTPUT
+            echo "behind=$BEHIND" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔀 Merge upstream changes
+        if: steps.check.outputs.synced == 'false'
+        run: |
+          git config user.name "Linsars"
+          git config user.email "linsars@users.noreply.github.com"
+          git merge upstream/${{ inputs.upstream_branch || 'main' }} --no-edit
+
+      - name: 🚀 Push to fork
+        if: steps.check.outputs.synced == 'false'
+        run: |
+          git push origin ${{ inputs.target_branch || 'main' }}
+
+      - name: 📢 Summary
+        if: always()
+        run: |
+          if [ "${{ steps.check.outputs.synced }}" = "true" ]; then
+            echo "## ✅ Upstream sync: nothing to do, fork is up to date."
+          else
+            echo "## ✅ Fork synced with upstream — ${{ steps.check.outputs.behind }} commit(s) merged."
+            echo "| Detail | Value |"
+            echo "|--------|-------|"
+            echo "| Upstream | w3ltyyy/lead |"
+            echo "| Branch | ${{ inputs.upstream_branch || 'main' }} |"
+            echo "| Merged commits | ${{ steps.check.outputs.behind }} |"
+          fi
