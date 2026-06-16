@@ -13,7 +13,7 @@
 // as view-once, reset its TTL after read so it can be viewed again.
 // ============================================================
 
-%hook(_TtC12TelegramCore18TelegramEngineImpl)
+%hook _TtC12TelegramCore18TelegramEngineImpl
 
 - (void)markMessageContentAsConsumedForPeerId:(int64_t)peerId
                                     messageId:(int32_t)messageId {
@@ -28,7 +28,7 @@
 %end
 
 // Fully clear the "expired" state on display so user can re-tap
-%hook(_TtC10TelegramUI28ChatMessageInteractiveNode)
+%hook _TtC10TelegramUI28ChatMessageInteractiveNode
 
 - (void)handleTapOnSelfDestructingMedia {
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kViewOnceUnlimited]) {
@@ -53,7 +53,7 @@
 // Telegram uses for screenshot blocking in protected chats.
 // ============================================================
 
-%hook(UITextField)
+%hook UITextField
 
 - (void)setSecureTextEntry:(BOOL)secure {
     if (secure && [[NSUserDefaults standardUserDefaults] boolForKey:kDisableScreenshotNotification]) {
@@ -67,7 +67,7 @@
 %end
 
 // Also hook the system screenshot detection callback
-%hook(UIApplication)
+%hook UIApplication
 
 - (void)_userDidTakeScreenshot:(id)screenshot {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableScreenshotNotification]) {
@@ -83,7 +83,7 @@
 // Upload any audio as voice message
 // ============================================================
 
-%hook(_TtC10TelegramUI16ChatInputRecorder)
+%hook _TtC10TelegramUI16ChatInputRecorder
 
 - (BOOL)isVoice {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kUploadVoiceEnabled]) {
@@ -99,7 +99,7 @@
 // Upload any video as video note (circular video message)
 // ============================================================
 
-%hook(_TtC10TelegramUI20VideoMessageRecorder)
+%hook _TtC10TelegramUI20VideoMessageRecorder
 
 - (BOOL)isVideoNoteSupportedForUrl:(NSURL *)url {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kUploadVideoNoteEnabled]) {

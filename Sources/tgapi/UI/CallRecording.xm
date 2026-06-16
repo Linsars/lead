@@ -102,7 +102,7 @@ static NSString *_callRecordingPath = nil;
 // Hook: add recording button to call interface
 // ============================================================
 
-%hook(_TtC10TelegramUI18CallControllerNode)
+%hook _TtC10TelegramUI18CallControllerNode
 
 - (void)viewDidLoad {
     %orig;

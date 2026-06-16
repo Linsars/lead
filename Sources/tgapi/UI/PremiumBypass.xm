@@ -15,7 +15,7 @@
 // 3. Visual indicators — restore premium badge
 // ============================================================
 
-%hook(_TtC12TelegramCore18TelegramEngineImpl)
+%hook _TtC12TelegramCore18TelegramEngineImpl
 
 - (BOOL)isPremium {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
@@ -33,7 +33,7 @@
 
 %end
 
-%hook(_TtC12TelegramCore21AccountPremiumProxy)
+%hook _TtC12TelegramCore21AccountPremiumProxy
 
 - (BOOL)isPremium {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
@@ -51,7 +51,7 @@
 
 %end
 
-%hook(_TtC12TelegramCore10PremiumGift)
+%hook _TtC12TelegramCore10PremiumGift
 
 - (BOOL)canSendGift {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
@@ -62,7 +62,7 @@
 
 %end
 
-%hook(_TtC10TelegramUI41ChatControllerNavigationBarAccessoryNode)
+%hook _TtC10TelegramUI41ChatControllerNavigationBarAccessoryNode
 
 - (BOOL)isPremiumRequired {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
@@ -74,7 +74,7 @@
 %end
 
 // Premium sticker/animation gating
-%hook(_TtC12TelegramCore26PremiumStickerConfiguration)
+%hook _TtC12TelegramCore26PremiumStickerConfiguration
 
 - (BOOL)canUsePremiumStickers {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
@@ -85,7 +85,7 @@
 
 %end
 
-%hook(_TtC12TelegramCore19PremiumReactionModel)
+%hook _TtC12TelegramCore19PremiumReactionModel
 
 - (BOOL)canUsePremiumReactions {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kPremiumBypass]) {
@@ -104,7 +104,7 @@
 // Russia, China, etc.). Hook the locale/premium check.
 // ============================================================
 
-%hook(_TtC12TelegramCore24TranslationFeatureManager)
+%hook _TtC12TelegramCore24TranslationFeatureManager
 
 - (BOOL)isTranslationAvailableForLocale:(NSLocale *)locale {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kUnlockTranslation]) {
@@ -123,7 +123,7 @@
 %end
 
 // Also bypass premium requirement for translation
-%hook(_TtC12TelegramCore12TranslationUI)
+%hook _TtC12TelegramCore12TranslationUI
 
 - (BOOL)isTranslationPremiumRequired {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kUnlockTranslation]) {

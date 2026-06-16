@@ -14,7 +14,7 @@
 // below the existing header content using the view hierarchy.
 // ============================================================
 
-%hook(_TtC14PeerInfoScreen18PeerInfoHeaderNode)
+%hook _TtC14PeerInfoScreen18PeerInfoHeaderNode
 
 - (void)updateWithPeer:(id)peer {
     %orig;
@@ -66,7 +66,7 @@
 // Hide Phone Number in Settings
 // ============================================================
 
-%hook(_TtC10TelegramUI26SettingsTableController)
+%hook _TtC10TelegramUI26SettingsTableController
 
 - (void)configurePhoneCell:(id)cell {
     %orig;
@@ -81,7 +81,7 @@
 %end
 
 // Also hide at data layer
-%hook(_TtC12TelegramCore22TelegramUserDataManager)
+%hook _TtC12TelegramCore22TelegramUserDataManager
 
 - (NSString *)phoneNumber {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kHidePhoneInSettings]) {
@@ -116,7 +116,7 @@ static BOOL isChatExemptFromGhost(int64_t peerId) {
 
 // Hook ChatControllerNode's read receipt trigger; skip FunctionHandler block
 // if this chat is in the exempt list.
-%hook(_TtC10TelegramUI17ChatControllerNode)
+%hook _TtC10TelegramUI17ChatControllerNode
 
 - (void)sendReadReceiptForMessageIds:(NSArray *)messageIds {
     int64_t peerId = 0;
@@ -141,7 +141,7 @@ static BOOL isChatExemptFromGhost(int64_t peerId) {
 // Ghost Mode Story Override
 // ============================================================
 
-%hook(_TtC10TelegramUI21StoryContainerScreen)
+%hook _TtC10TelegramUI21StoryContainerScreen
 
 - (void)markStoryAsRead:(int32_t)storyId forPeerId:(int64_t)peerId {
     if (peerId != 0 && isChatExemptFromGhost(peerId)) {
@@ -160,7 +160,7 @@ static BOOL isChatExemptFromGhost(int64_t peerId) {
 // Auto Archive Non-Contacts
 // ============================================================
 
-%hook(_TtC12TelegramCore14ChatListIndexer)
+%hook _TtC12TelegramCore14ChatListIndexer
 
 - (void)archiveChatsNotInContactList {
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kAutoArchiveNonContacts]) {
