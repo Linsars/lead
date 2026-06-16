@@ -559,7 +559,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   case FILE_FIXER:
     return 2;
   case ENHANCEMENTS:
-    return 8;
+    return 9;
   case FAKE_LOCATION:
     return 2;
   case LANGUAGE:
@@ -982,6 +982,23 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.detailTextLabel.numberOfLines = 0;
         return cell;
       }
+      case 8: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"person.2.badge.gearshape"];
+        cell.imageView.tintColor = [self dynamicColorBW];
+        cell.textLabel.text = @"Unlimited Accounts";
+        cell.detailTextLabel.text = @"Bypass the 3-account limit (safe)";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
     }
   } else if (indexPath.section == FAKE_LOCATION) {
     if (indexPath.row == 0) {
@@ -1209,6 +1226,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     case 5: return kShowProfileId;
     case 6: return kHidePhoneInSettings;
     case 7: return kCallRecordingButton;
+    case 8: return kAccountLimitBypass;
     default: return nil;
     }
   case 4: // Fake Location

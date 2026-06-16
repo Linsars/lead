@@ -88,6 +88,7 @@
 #define kSendAsVoice @"LeadSendAsVoice"
 
 // Teledark-inspired features
+#define kAccountLimitBypass         @"LeadAccountLimitBypass"
 #define kViewOnceUnlimited          @"LeadViewOnceUnlimited"
 #define kUploadVoiceEnabled         @"LeadUploadVoiceEnabled"
 #define kUploadVideoNoteEnabled     @"LeadUploadVideoNoteEnabled"
