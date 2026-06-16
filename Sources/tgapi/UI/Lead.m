@@ -987,7 +987,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.imageView.image = [UIImage systemImageNamed:@"person.2.badge.gearshape"];
         cell.imageView.tintColor = [self dynamicColorBW];
         cell.textLabel.text = @"Unlimited Accounts";
-        cell.detailTextLabel.text = @"Bypass the 3-account limit (safe)";
+        cell.detailTextLabel.text = @"Remove account cap (safe, no server check)";
         UISwitch *toggle = (UISwitch *)cell.accessoryView;
         if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
         NSString *switchKey = [self switchKeyForIndexPath:indexPath];

@@ -2,10 +2,9 @@
 #import "Headers.h"
 #import "Constants.h"
 
-// Account limit bypass: intercept the MTProto config response
-// and overwrite maximumNumberOfAccounts to 10
-// This is how all third-party clients do it — the server sends a hint,
-// clients that ignore it just work.
+// Account limit bypass: intercept the config update on Account class
+// and overwrite maximumNumberOfAccounts to no limit
+// All third-party clients do this — server sends a hint, we ignore it
 
 %hook _TtC12TelegramCore7AccountC
 
@@ -16,8 +15,8 @@
     
     SEL maxAccountsSel = @selector(setMaximumNumberOfAccounts:);
     if ([(id)limitsConfig respondsToSelector:maxAccountsSel]) {
-        ((void (*)(id, SEL, int32_t))(void *)objc_msgSend)((id)limitsConfig, maxAccountsSel, 10);
-        customLog(@"AccountLimit: set max accounts to 10");
+        ((void (*)(id, SEL, int32_t))(void *)objc_msgSend)((id)limitsConfig, maxAccountsSel, INT32_MAX);
+        customLog(@"AccountLimit: removed account cap (INT32_MAX)");
     }
 }
 
