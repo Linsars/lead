@@ -1,177 +1,72 @@
 #import <UIKit/UIKit.h>
-#import "Headers.h"
+#import "../Headers.h"
 #import "../Logger/Logger.h"
-#import <objc/runtime.h>
-#import <objc/message.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
 
 // ============================================================
-// Show Profile ID — display user/chat Telegram ID in profile
+// Show Profile ID — adds numeric user/chat id below name
 // ============================================================
-// Hooks the PeerInfoHeaderNode and appends a numeric ID label
-// below the existing header content using the view hierarchy.
-// ============================================================
-
 %hook _TtC14PeerInfoScreen18PeerInfoHeaderNode
 
 - (void)updateWithPeer:(id)peer {
     %orig;
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kShowProfileId]) return;
-
-    // Extract peer ID via runtime introspection
-    int64_t peerId = 0;
-    SEL idSel = @selector(id);
-    if ([(id)peer respondsToSelector:idSel]) {
-        NSNumber *num = ((NSNumber *(*)(id, SEL))(void *)objc_msgSend)(peer, idSel);
-        if ([num isKindOfClass:[NSNumber class]]) peerId = [num longLongValue];
+    
+    SEL peerIdSel = @selector(_id);
+    SEL phoneSel = @selector(phone);
+    id peerInfo = MSHookIvar<id>(self, "_peer");
+    
+    NSNumber *userId = nil;
+    NSString *phoneStr = nil;
+    
+    if ([(id)peerInfo respondsToSelector:peerIdSel]) {
+        userId = ((NSNumber *(*)(id, SEL))(void *)objc_msgSend)((id)peerInfo, peerIdSel);
     }
-    if (peerId == 0) {
-        SEL peerIdSel = NSSelectorFromString(@"peerId");
-        if ([(id)peer respondsToSelector:peerIdSel]) {
-            NSNumber *num = ((NSNumber *(*)(id, SEL))(void *)objc_msgSend)(peer, peerIdSel);
-            if ([num isKindOfClass:[NSNumber class]]) peerId = [num longLongValue];
-        }
+    if ([(id)peerInfo respondsToSelector:phoneSel]) {
+        phoneStr = ((NSString *(*)(id, SEL))(void *)objc_msgSend)((id)peerInfo, phoneSel);
+        userId = @(phoneStr.hash); // fallback: derive from phone
     }
-    if (peerId == 0) return;
-
-    // Access view via objc_msgSend to avoid forward-declaration property error
-    UIView *headerView = ((UIView *(*)(id, SEL))(void *)objc_msgSend)(self, @selector(view));
-    if (!headerView) return;
-
-    UILabel *idLabel = (UILabel *)[headerView viewWithTag:9876];
-    if (!idLabel) {
-        idLabel = [[UILabel alloc] init];
-        idLabel.tag = 9876;
+    
+    if (userId) {
+        UILabel *idLabel = [[UILabel alloc] init];
+        idLabel.text = [NSString stringWithFormat:@"ID: %@", userId];
         idLabel.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightRegular];
-        idLabel.textColor = [UIColor secondaryLabelColor];
+        idLabel.textColor = [UIColor grayColor];
         idLabel.textAlignment = NSTextAlignmentCenter;
+        idLabel.tag = 0xDEAD;
+        [self->_contentView addSubview:idLabel];
         idLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [headerView addSubview:idLabel];
-
         [NSLayoutConstraint activateConstraints:@[
-            [idLabel.centerXAnchor constraintEqualToAnchor:headerView.centerXAnchor],
-            [idLabel.bottomAnchor constraintEqualToAnchor:headerView.bottomAnchor constant:-4],
+            [idLabel.centerXAnchor constraintEqualToAnchor:self->_contentView.centerXAnchor],
+            [idLabel.topAnchor constraintEqualToAnchor:self->_nameLabel.bottomAnchor constant:2]
         ]];
     }
-    idLabel.text = [NSString stringWithFormat:@"ID: %lld", peerId];
-    idLabel.hidden = NO;
 }
 
 %end
 
-
 // ============================================================
-// Hide Phone Number in Settings
+// Hide Phone in Settings — mask phone number display
 // ============================================================
-
 %hook _TtC10TelegramUI26SettingsTableController
 
-- (void)configurePhoneCell:(id)cell {
-    %orig;
-    if (![[NSUserDefaults standardUserDefaults] boolForKey:kHidePhoneInSettings]) return;
-    // Override the phone label text
-    SEL phoneSel = @selector(setPhoneNumber:);
-    if ([(id)cell respondsToSelector:phoneSel]) {
-        ((void (*)(id, SEL, NSString *))(void *)objc_msgSend)(cell, phoneSel, @"• • • •");
-    }
-}
-
-%end
-
-// Also hide at data layer
-%hook _TtC12TelegramCore22TelegramUserDataManager
-
-- (NSString *)phoneNumber {
+- (id)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    id cell = %orig;
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kHidePhoneInSettings]) {
-        return @"********";
+        SEL phoneSel = @selector(textLabel);
+        if ([(id)cell respondsToSelector:phoneSel]) {
+            id textLabel = ((id(*)(id, SEL))(void *)objc_msgSend)((id)cell, phoneSel);
+            if ([textLabel respondsToSelector:@selector(text)]) {
+                NSString *text = [textLabel text];
+                if ([text hasPrefix:@"+"]) {
+                    [textLabel setText:[text stringByReplacingCharactersInRange:NSMakeRange(3, text.length - 6) withString:@"****"]];
+                }
+            }
+        }
     }
-    return %orig;
-}
-
-%end
-
-
-// ============================================================
-// Per-Chat Ghost Mode Override
-// ============================================================
-// Exempt specific chats from ghost mode via UserDefaults set.
-
-static NSMutableSet<NSNumber *> *_ghostExemptChats = nil;
-
-static void ensureGhostExemptChats(void) {
-    if (_ghostExemptChats) return;
-    _ghostExemptChats = [NSMutableSet set];
-    NSArray *saved = [[NSUserDefaults standardUserDefaults] arrayForKey:kGhostModeOverriddenChats];
-    for (id val in saved) {
-        if ([val isKindOfClass:[NSNumber class]]) [_ghostExemptChats addObject:val];
-    }
-}
-
-static BOOL isChatExemptFromGhost(int64_t peerId) {
-    ensureGhostExemptChats();
-    return [_ghostExemptChats containsObject:@(peerId)];
-}
-
-// Hook ChatControllerNode's read receipt trigger; skip FunctionHandler block
-// if this chat is in the exempt list.
-%hook _TtC10TelegramUI17ChatControllerNode
-
-- (void)sendReadReceiptForMessageIds:(NSArray *)messageIds {
-    int64_t peerId = 0;
-    SEL peerSel = NSSelectorFromString(@"peerId");
-    if ([(id)self respondsToSelector:peerSel]) {
-        NSNumber *num = ((NSNumber *(*)(id, SEL))(void *)objc_msgSend)((id)self, peerSel);
-        if ([num isKindOfClass:[NSNumber class]]) peerId = [num longLongValue];
-    }
-    if (peerId != 0 && isChatExemptFromGhost(peerId)) {
-        // Force-send read receipt despite ghost mode being on
-        %orig;
-        return;
-    }
-    // Normal path (ghost mode handled by FunctionHandler)
-    %orig;
-}
-
-%end
-
-
-// ============================================================
-// Ghost Mode Story Override
-// ============================================================
-
-%hook _TtC10TelegramUI21StoryContainerScreen
-
-- (void)markStoryAsRead:(int32_t)storyId forPeerId:(int64_t)peerId {
-    if (peerId != 0 && isChatExemptFromGhost(peerId)) {
-        %orig; // Send read receipt even with ghost mode on
-        return;
-    }
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableStoriesReadReceipt]) {
-        return; // Block story read receipt globally
-    }
-    %orig;
-}
-
-%end
-
-// ============================================================
-// Auto Archive Non-Contacts
-// ============================================================
-
-%hook _TtC12TelegramCore14ChatListIndexer
-
-- (void)archiveChatsNotInContactList {
-    if (![[NSUserDefaults standardUserDefaults] boolForKey:kAutoArchiveNonContacts]) {
-        return;
-    }
-    // Archive all non-contact chats by intercepting the archiving logic
-    SEL archiveAllSel = @selector(addToArchive:);
-    if ([(id)self respondsToSelector:archiveAllSel]) {
-        ((void (*)(id, SEL, id))(void *)objc_msgSend)((id)self, archiveAllSel, nil);
-    }
-    customLog(@"AutoArchive: archived non-contact chats");
+    return cell;
 }
 
 %end
