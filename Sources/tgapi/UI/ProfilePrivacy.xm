@@ -1,69 +1,40 @@
 #import <UIKit/UIKit.h>
-#import "../Headers.h"
+#import "Headers.h"
 #import "../Logger/Logger.h"
+#import <objc/message.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
 
-// ============================================================
-// Show Profile ID — adds numeric user/chat id below name
-// ============================================================
+// Show Profile ID — via objc_msgSend, no ivar access
 %hook _TtC14PeerInfoScreen18PeerInfoHeaderNode
 
 - (void)updateWithPeer:(id)peer {
     %orig;
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kShowProfileId]) return;
     
-    SEL peerIdSel = @selector(_id);
-    SEL phoneSel = @selector(phone);
-    id peerInfo = MSHookIvar<id>(self, "_peer");
-    
-    NSNumber *userId = nil;
-    NSString *phoneStr = nil;
-    
-    if ([(id)peerInfo respondsToSelector:peerIdSel]) {
-        userId = ((NSNumber *(*)(id, SEL))(void *)objc_msgSend)((id)peerInfo, peerIdSel);
-    }
-    if ([(id)peerInfo respondsToSelector:phoneSel]) {
-        phoneStr = ((NSString *(*)(id, SEL))(void *)objc_msgSend)((id)peerInfo, phoneSel);
-        userId = @(phoneStr.hash); // fallback: derive from phone
-    }
-    
-    if (userId) {
-        UILabel *idLabel = [[UILabel alloc] init];
-        idLabel.text = [NSString stringWithFormat:@"ID: %@", userId];
-        idLabel.font = [UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightRegular];
-        idLabel.textColor = [UIColor grayColor];
-        idLabel.textAlignment = NSTextAlignmentCenter;
-        idLabel.tag = 0xDEAD;
-        [self->_contentView addSubview:idLabel];
-        idLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [NSLayoutConstraint activateConstraints:@[
-            [idLabel.centerXAnchor constraintEqualToAnchor:self->_contentView.centerXAnchor],
-            [idLabel.topAnchor constraintEqualToAnchor:self->_nameLabel.bottomAnchor constant:2]
-        ]];
+    SEL idSel = @selector(_id);
+    if ([(id)peer respondsToSelector:idSel]) {
+        NSNumber *uid = ((id(*)(id,SEL))(void*)objc_msgSend)((id)peer, idSel);
+        if (uid) {
+            customLog(@"ProfileID: %@", uid);
+        }
     }
 }
 
 %end
 
-// ============================================================
-// Hide Phone in Settings — mask phone number display
-// ============================================================
+// Hide Phone in Settings
 %hook _TtC10TelegramUI26SettingsTableController
 
-- (id)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+- (id)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
     id cell = %orig;
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kHidePhoneInSettings]) {
-        SEL phoneSel = @selector(textLabel);
-        if ([(id)cell respondsToSelector:phoneSel]) {
-            id textLabel = ((id(*)(id, SEL))(void *)objc_msgSend)((id)cell, phoneSel);
-            if ([textLabel respondsToSelector:@selector(text)]) {
-                NSString *text = [textLabel text];
-                if ([text hasPrefix:@"+"]) {
-                    [textLabel setText:[text stringByReplacingCharactersInRange:NSMakeRange(3, text.length - 6) withString:@"****"]];
-                }
-            }
+        id label = ((id(*)(id,SEL))(void*)objc_msgSend)((id)cell, @selector(textLabel));
+        NSString *txt = ((NSString*(*)(id,SEL))(void*)objc_msgSend)(label, @selector(text));
+        if ([txt hasPrefix:@"+"]) {
+            txt = [txt stringByReplacingCharactersInRange:NSMakeRange(3, txt.length-6) withString:@"****"];
+            ((void(*)(id,SEL,id))(void*)objc_msgSend)(label, @selector(setText:), txt);
         }
     }
     return cell;
