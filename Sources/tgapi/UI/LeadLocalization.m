@@ -307,8 +307,6 @@ NSString *LeadBundlePath(void) {
       @"CREDITS_NOTE_SUBTITLE" : @"A note from developer",
       @"CREDITS_DONATE_SUBTITLE" : @"Donate crypto to support the project",
       @"SUPPORT_DEV_TITLE" : @"Support Development",
-      @"CONFIRM_CALLS_TITLE" : @"Confirm Calls",
-      @"CONFIRM_CALLS_SUBTITLE" : @"Confirm before placing a call",
       @"DISCLAIMER" : @"Disclaimer",
       @"AUTHOR_MESSAGE" :
           @"This Telegram tweak is for personal and educational use only. We "
