@@ -67,7 +67,7 @@ static NSString *_callRecordingPath = nil;
     [self.internalRecorder record];
     _isCallRecordingActive = YES;
 
-    [Logger.shared log:@"CallRecording: started recording to %@", _callRecordingPath];
+    customLog(@"CallRecording: started recording to %@", _callRecordingPath);
 }
 
 - (void)stopRecording {
@@ -77,7 +77,7 @@ static NSString *_callRecordingPath = nil;
     _isCallRecordingActive = NO;
 
     if (_callRecordingPath) {
-        [Logger.shared log:@"CallRecording: saved to %@", _callRecordingPath];
+        customLog(@"CallRecording: saved to %@", _callRecordingPath);
         // Share sheet notification
         dispatch_async(dispatch_get_main_queue(), ^{
             UIAlertController *alert = [UIAlertController

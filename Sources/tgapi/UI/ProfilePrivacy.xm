@@ -23,13 +23,13 @@
     // Extract peer ID via runtime introspection
     int64_t peerId = 0;
     SEL idSel = @selector(id);
-    if ([peer respondsToSelector:idSel]) {
+    if ([(id)peer respondsToSelector:idSel]) {
         NSNumber *num = ((NSNumber *(*)(id, SEL))(void *)objc_msgSend)(peer, idSel);
         if ([num isKindOfClass:[NSNumber class]]) peerId = [num longLongValue];
     }
     if (peerId == 0) {
         SEL peerIdSel = NSSelectorFromString(@"peerId");
-        if ([peer respondsToSelector:peerIdSel]) {
+        if ([(id)peer respondsToSelector:peerIdSel]) {
             NSNumber *num = ((NSNumber *(*)(id, SEL))(void *)objc_msgSend)(peer, peerIdSel);
             if ([num isKindOfClass:[NSNumber class]]) peerId = [num longLongValue];
         }
@@ -73,7 +73,7 @@
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kHidePhoneInSettings]) return;
     // Override the phone label text
     SEL phoneSel = @selector(setPhoneNumber:);
-    if ([cell respondsToSelector:phoneSel]) {
+    if ([(id)cell respondsToSelector:phoneSel]) {
         ((void (*)(id, SEL, NSString *))(void *)objc_msgSend)(cell, phoneSel, @"• • • •");
     }
 }
@@ -121,8 +121,8 @@ static BOOL isChatExemptFromGhost(int64_t peerId) {
 - (void)sendReadReceiptForMessageIds:(NSArray *)messageIds {
     int64_t peerId = 0;
     SEL peerSel = NSSelectorFromString(@"peerId");
-    if ([self respondsToSelector:peerSel]) {
-        NSNumber *num = ((NSNumber *(*)(id, SEL))(void *)objc_msgSend)(self, peerSel);
+    if ([(id)self respondsToSelector:peerSel]) {
+        NSNumber *num = ((NSNumber *(*)(id, SEL))(void *)objc_msgSend)((id)self, peerSel);
         if ([num isKindOfClass:[NSNumber class]]) peerId = [num longLongValue];
     }
     if (peerId != 0 && isChatExemptFromGhost(peerId)) {
@@ -168,10 +168,10 @@ static BOOL isChatExemptFromGhost(int64_t peerId) {
     }
     // Archive all non-contact chats by intercepting the archiving logic
     SEL archiveAllSel = @selector(addToArchive:);
-    if ([self respondsToSelector:archiveAllSel]) {
-        ((void (*)(id, SEL, id))(void *)objc_msgSend)(self, archiveAllSel, nil);
+    if ([(id)self respondsToSelector:archiveAllSel]) {
+        ((void (*)(id, SEL, id))(void *)objc_msgSend)((id)self, archiveAllSel, nil);
     }
-    [Logger.shared log:@"AutoArchive: archived non-contact chats"];
+    customLog(@"AutoArchive: archived non-contact chats");
 }
 
 %end

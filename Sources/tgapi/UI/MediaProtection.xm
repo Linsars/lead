@@ -22,7 +22,7 @@
     }
     // Swallow the consume — prevents media from being destroyed
     // but still marks visibility so the UI doesn't freeze
-    [Logger.shared log:@"ViewOnceUnlimited: suppressed consume for (%lld, %d)", peerId, messageId];
+    customLog(@"ViewOnceUnlimited: suppressed consume for (%lld, %d)", peerId, messageId);
 }
 
 %end
@@ -36,7 +36,7 @@
     }
     // Re-arm the self-destructing media display
     SEL consumedSel = @selector(setConsumed:);
-    if ([self respondsToSelector:consumedSel]) {
+    if ([(id)self respondsToSelector:consumedSel]) {
         ((void (*)(id, SEL, BOOL))(void *)objc_msgSend)(self, consumedSel, NO);
     }
     %orig;
