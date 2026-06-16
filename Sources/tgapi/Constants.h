@@ -94,8 +94,5 @@
 #define kAutoArchiveNonContacts     @"LeadAutoArchiveNonContacts"
 #define kShowProfileId              @"LeadShowProfileId"
 #define kHidePhoneInSettings        @"LeadHidePhoneInSettings"
-#define kGhostModeOverriddenChats   @"LeadGhostModeOverriddenChats"
-#define kPremiumBypass              @"LeadPremiumBypass"
 #define kUnlockTranslation          @"LeadUnlockTranslation"
 #define kCallRecordingButton        @"LeadCallRecordingButton"
-#define kAutoRecordCalls            @"LeadAutoRecordCalls"
