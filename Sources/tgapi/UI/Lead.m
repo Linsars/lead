@@ -84,7 +84,7 @@ static NSString *const kLeadTweakVersion = @"1.3.9";
 }
 
 - (void)didChangeFakeLocation {
-  NSIndexSet *section = [NSIndexSet indexSetWithIndex:3];
+  NSIndexSet *section = [NSIndexSet indexSetWithIndex:FAKE_LOCATION];
   [self.tableView reloadSections:section
                 withRowAnimation:UITableViewRowAnimationAutomatic];
 }
@@ -539,13 +539,14 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   GHOST_MODE = 0,
   MISC = 1,
   FILE_FIXER = 2,
-  FAKE_LOCATION = 3,
-  LANGUAGE = 4,
-  CREDITS = 5,
+  ENHANCEMENTS = 3,
+  FAKE_LOCATION = 4,
+  LANGUAGE = 5,
+  CREDITS = 6,
 };
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-  return 6;
+  return 7;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView
@@ -557,6 +558,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     return 7;
   case FILE_FIXER:
     return 2;
+  case ENHANCEMENTS:
+    return 9;
   case FAKE_LOCATION:
     return 2;
   case LANGUAGE:
@@ -579,6 +582,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     return TGLoc(@"MISC_SECTION_HEADER");
   case FILE_FIXER:
     return TGLoc(@"FILE_FIXER_SECTION_HEADER");
+  case ENHANCEMENTS:
+    return @"Enhancements";
   case FAKE_LOCATION:
     return TGLoc(@"FAKE_LOCATION_SECTION_HEADER");
   case LANGUAGE:
@@ -839,6 +844,162 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     cell.textLabel.numberOfLines = 0;
     cell.detailTextLabel.numberOfLines = 0;
     return cell;
+  } else if (indexPath.section == ENHANCEMENTS) {
+    switch (indexPath.row) {
+      case 0: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"crown.fill"];
+        cell.imageView.tintColor = [UIColor systemYellowColor];
+        cell.textLabel.text = @"Premium Bypass";
+        cell.detailTextLabel.text = @"Unlock Telegram Premium features";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
+      case 1: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"globe"];
+        cell.imageView.tintColor = [self dynamicColorBW];
+        cell.textLabel.text = @"Unlock Translation";
+        cell.detailTextLabel.text = @"Enable built-in translator (bypass region lock)";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
+      case 2: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"arrow.triangle.2.circlepath"];
+        cell.imageView.tintColor = [self dynamicColorBW];
+        cell.textLabel.text = @"View Once Unlimited";
+        cell.detailTextLabel.text = @"Allow unlimited views of self-destructing media";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
+      case 3: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"archivebox.fill"];
+        cell.imageView.tintColor = [self dynamicColorBW];
+        cell.textLabel.text = @"Auto Archive Non-Contacts";
+        cell.detailTextLabel.text = @"Automatically archive chats from strangers";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
+      case 4: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"mic.fill"];
+        cell.imageView.tintColor = [self dynamicColorBW];
+        cell.textLabel.text = @"Upload Any Audio";
+        cell.detailTextLabel.text = @"Send any audio file as voice message";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
+      case 5: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"video.fill"];
+        cell.imageView.tintColor = [self dynamicColorBW];
+        cell.textLabel.text = @"Upload Any Video";
+        cell.detailTextLabel.text = @"Send any video file as video message";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
+      case 6: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"number"];
+        cell.imageView.tintColor = [self dynamicColorBW];
+        cell.textLabel.text = @"Show Profile ID";
+        cell.detailTextLabel.text = @"Display user/chat numeric ID in profile";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
+      case 7: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"eye.slash"];
+        cell.imageView.tintColor = [self dynamicColorBW];
+        cell.textLabel.text = @"Hide Phone in Settings";
+        cell.detailTextLabel.text = @"Mask your phone number in settings";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
+      case 8: {
+        cell = [self switchCellFromTableView:tableView];
+        cell.imageView.image = [UIImage systemImageNamed:@"recordingtape"];
+        cell.imageView.tintColor = [UIColor systemRedColor];
+        cell.textLabel.text = @"Call Recording Button";
+        cell.detailTextLabel.text = @"Add recording button during voice calls";
+        UISwitch *toggle = (UISwitch *)cell.accessoryView;
+        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
+        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
+        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
+        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
+        cell.accessoryView = toggle;
+        cell.textLabel.numberOfLines = 0;
+        cell.detailTextLabel.numberOfLines = 0;
+        return cell;
+      }
+    }
   } else if (indexPath.section == FAKE_LOCATION) {
     if (indexPath.row == 0) {
       cell = [self switchCellFromTableView:tableView];
@@ -1055,7 +1216,20 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   case 2: // File Picker Fix
     if (indexPath.row == 0) return FILE_PICKER_FIX_KEY;
     return nil;
-  case 3: // Fake Location
+  case 3: // Enhancements
+    switch (indexPath.row) {
+    case 0: return kPremiumBypass;
+    case 1: return kUnlockTranslation;
+    case 2: return kViewOnceUnlimited;
+    case 3: return kAutoArchiveNonContacts;
+    case 4: return kUploadVoiceEnabled;
+    case 5: return kUploadVideoNoteEnabled;
+    case 6: return kShowProfileId;
+    case 7: return kHidePhoneInSettings;
+    case 8: return kCallRecordingButton;
+    default: return nil;
+    }
+  case 4: // Fake Location
     return FAKE_LOCATION_ENABLED_KEY;
   default:
     return nil;

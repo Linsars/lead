@@ -86,3 +86,16 @@
 
 // Send audio/video files as voice messages
 #define kSendAsVoice @"LeadSendAsVoice"
+
+// Teledark-inspired features
+#define kViewOnceUnlimited          @"LeadViewOnceUnlimited"
+#define kUploadVoiceEnabled         @"LeadUploadVoiceEnabled"
+#define kUploadVideoNoteEnabled     @"LeadUploadVideoNoteEnabled"
+#define kAutoArchiveNonContacts     @"LeadAutoArchiveNonContacts"
+#define kShowProfileId              @"LeadShowProfileId"
+#define kHidePhoneInSettings        @"LeadHidePhoneInSettings"
+#define kGhostModeOverriddenChats   @"LeadGhostModeOverriddenChats"
+#define kPremiumBypass              @"LeadPremiumBypass"
+#define kUnlockTranslation          @"LeadUnlockTranslation"
+#define kCallRecordingButton        @"LeadCallRecordingButton"
+#define kAutoRecordCalls            @"LeadAutoRecordCalls"
