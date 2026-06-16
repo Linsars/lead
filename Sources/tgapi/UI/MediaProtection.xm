@@ -1,57 +1,43 @@
 #import <UIKit/UIKit.h>
-#import "../Constants.h"
-#import "../Logger/Logger.h"
 
-// ============================================================
-// View Once Unlimited — suppress consume so media stays viewable
-// ============================================================
+// ============================================
+// 12.8 Note: MessageHistoryView class still exists (TelegramCoreFramework)
+// but consumeMessageContentForMessageId:peerId: selector NOT found.
+// The MTProto-level anti-self-destruct in Hooks.xm handles the network layer.
+// This file keeps hooks that still work.
+// ============================================
 
-%hook _TtC12TelegramCore19MessageHistoryView
-
-- (void)consumeMessageContentForMessageId:(int32_t)messageId peerId:(int64_t)peerId {
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:kViewOnceUnlimited]) {
-        customLog(@"ViewOnce: suppressed consume for (%lld, %d)", peerId, messageId);
-        return; // Don't send consume — media stays available
-    }
-    %orig;
-}
-
+// Forward restriction bypass — selectors isCopyProtected / copyProtectionEnabled exist
+// Hook works via bare class names
+%hook _TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState
 %end
 
-// ============================================================
-// Bypass Screenshot Protection — UITextField secure entry disable
-// ============================================================
-
-%hook UITextField
-
-- (void)setSecureTextEntry:(BOOL)secure {
-    if (secure && [[NSUserDefaults standardUserDefaults] boolForKey:kDisableScreenshotNotification]) {
-        customLog(@"ScreenshotProtection: suppressing secure text entry");
-        return;
-    }
-    %orig;
+%hook _TtC7Postbox7Message
+- (BOOL)isCopyProtected {
+    BOOL orig = %orig;
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"kDisableForwardRestriction"])
+        return NO;
+    return orig;
 }
 
+- (BOOL)noForwards {
+    BOOL orig = %orig;
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"kDisableForwardRestriction"])
+        return NO;
+    return orig;
+}
 %end
 
-// ============================================================
-// Upload Any Audio/Video — bypass format validation
-// ============================================================
-
-%hook _TtC12TelegramCore21MediaMessageAttribute
-
+// View-once screenshot block
+%hook _TtC12TelegramCore16TelegramMediaFile
 - (BOOL)isVoice {
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:kUploadVoiceEnabled]) {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"kSendAsVoice"])
         return YES;
-    }
     return %orig;
 }
-
 - (BOOL)isVideoNote {
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:kUploadVideoNoteEnabled]) {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"kSendAsVideo"])
         return YES;
-    }
     return %orig;
 }
-
 %end
