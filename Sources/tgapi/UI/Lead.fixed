@@ -8,7 +8,7 @@
 
 // Announcements are fetched from this JSON file on GitHub
 static NSString *const kLeadAnnouncementsURL = @"https://raw.githubusercontent.com/Linsars/lead/main/announcements.json";
-static NSString *const kLeadTweakVersion = @"1.3.9.1";
+static NSString *const kLeadTweakVersion = @"1.3.9";
 
 @interface Lead ()
 @property(nonatomic, strong) UITableView *tableView;
@@ -559,7 +559,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
   case FILE_FIXER:
     return 2;
   case ENHANCEMENTS:
-    return 9;
+    return 6;
   case FAKE_LOCATION:
     return 2;
   case LANGUAGE:
@@ -846,24 +846,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     return cell;
   } else if (indexPath.section == ENHANCEMENTS) {
     switch (indexPath.row) {
-      case 0: {
-        cell = [self switchCellFromTableView:tableView];
-        cell.imageView.image = [UIImage systemImageNamed:@"globe"];
-        cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = TGLoc(@"UNLOCK_TRANSLATION_TITLE");
-        cell.detailTextLabel.text = TGLoc(@"UNLOCK_TRANSLATION_SUBTITLE");
-        UISwitch *toggle = (UISwitch *)cell.accessoryView;
-        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
-        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
-        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
-        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
-        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
-        cell.accessoryView = toggle;
-        cell.textLabel.numberOfLines = 0;
-        cell.detailTextLabel.numberOfLines = 0;
-        return cell;
-      }
-      case 1: {
+      case 0:
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"arrow.triangle.2.circlepath"];
         cell.imageView.tintColor = [self dynamicColorBW];
@@ -880,7 +863,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.detailTextLabel.numberOfLines = 0;
         return cell;
       }
-      case 2: {
+      case 1:
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"archivebox.fill"];
         cell.imageView.tintColor = [self dynamicColorBW];
@@ -897,7 +880,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.detailTextLabel.numberOfLines = 0;
         return cell;
       }
-      case 3: {
+      case 2:
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"mic.fill"];
         cell.imageView.tintColor = [self dynamicColorBW];
@@ -914,24 +897,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.detailTextLabel.numberOfLines = 0;
         return cell;
       }
-      case 4: {
-        cell = [self switchCellFromTableView:tableView];
-        cell.imageView.image = [UIImage systemImageNamed:@"video.fill"];
-        cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = TGLoc(@"UPLOAD_ANY_VIDEO_TITLE");
-        cell.detailTextLabel.text = TGLoc(@"UPLOAD_ANY_VIDEO_SUBTITLE");
-        UISwitch *toggle = (UISwitch *)cell.accessoryView;
-        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
-        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
-        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
-        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
-        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
-        cell.accessoryView = toggle;
-        cell.textLabel.numberOfLines = 0;
-        cell.detailTextLabel.numberOfLines = 0;
-        return cell;
-      }
-      case 5: {
+      case 3: {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"number"];
         cell.imageView.tintColor = [self dynamicColorBW];
@@ -948,24 +914,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.detailTextLabel.numberOfLines = 0;
         return cell;
       }
-      case 6: {
-        cell = [self switchCellFromTableView:tableView];
-        cell.imageView.image = [UIImage systemImageNamed:@"eye.slash"];
-        cell.imageView.tintColor = [self dynamicColorBW];
-        cell.textLabel.text = TGLoc(@"HIDE_PHONE_TITLE");
-        cell.detailTextLabel.text = TGLoc(@"HIDE_PHONE_SUBTITLE");
-        UISwitch *toggle = (UISwitch *)cell.accessoryView;
-        if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) toggle = [[UISwitch alloc] init];
-        NSString *switchKey = [self switchKeyForIndexPath:indexPath];
-        toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
-        [toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
-        toggle.tag = 1000 + (indexPath.section * 1000) + indexPath.row;
-        cell.accessoryView = toggle;
-        cell.textLabel.numberOfLines = 0;
-        cell.detailTextLabel.numberOfLines = 0;
-        return cell;
-      }
-      case 7: {
+      case 4: {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"recordingtape"];
         cell.imageView.tintColor = [UIColor systemRedColor];
@@ -982,7 +931,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.detailTextLabel.numberOfLines = 0;
         return cell;
       }
-      case 8: {
+      case 5:
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"person.2.badge.gearshape"];
         cell.imageView.tintColor = [self dynamicColorBW];
@@ -998,10 +947,6 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.textLabel.numberOfLines = 0;
         cell.detailTextLabel.numberOfLines = 0;
         return cell;
-      }
-    }
-  } else if (indexPath.section == FAKE_LOCATION) {
-    if (indexPath.row == 0) {
       cell = [self switchCellFromTableView:tableView];
       cell.imageView.image = [UIImage systemImageNamed:@"location.fill"];
       cell.imageView.tintColor = [self dynamicColorBW];
@@ -1069,14 +1014,10 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     cell.textLabel.numberOfLines = 0;
     cell.detailTextLabel.numberOfLines = 0;
     return cell;
-  }
 
   return cell;
-}
-
 #pragma mark - UITableViewDelegate
 
-- (void)tableView:(UITableView *)tableView
     didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
   [tableView deselectRowAtIndexPath:indexPath animated:YES];
 
@@ -1218,15 +1159,12 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     return nil;
   case 3: // Enhancements
     switch (indexPath.row) {
-    case 0: return kUnlockTranslation;
-    case 1: return kViewOnceUnlimited;
-    case 2: return kAutoArchiveNonContacts;
-    case 3: return kUploadVoiceEnabled;
-    case 4: return kUploadVideoNoteEnabled;
-    case 5: return kShowProfileId;
-    case 6: return kHidePhoneInSettings;
-    case 7: return kCallRecordingButton;
-    case 8: return kAccountLimitBypass;
+    case 0: return kViewOnceUnlimited;
+    case 1: return kAutoArchiveNonContacts;
+    case 2: return kUploadVoiceEnabled;
+    case 3: return kShowProfileId;
+    case 4: return kCallRecordingButton;
+    case 5: return kAccountLimitBypass;
     default: return nil;
     }
   case 4: // Fake Location
