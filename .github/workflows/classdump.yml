@@ -1,66 +1,54 @@
-name: class-dump
+name: Class-Dump Telegram Frameworks
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: 'IPA download URL'
+        required: true
 
 jobs:
-  analyze:
-    if: github.event.release.prerelease
+  classdump:
     runs-on: macos-15
     steps:
-      - name: Download dylib
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install class-dump
         run: |
-          gh release download ${{ github.event.release.tag_name }} \
-            --repo ${{ github.repository }} \
-            --pattern 'Lead_1.4.2*' -O /tmp/Lead.dylib
-          echo "Downloaded: $(ls -lh /tmp/Lead.dylib | awk '{print $5}')"
-
-      - name: Mach-O analysis with native tools
+          curl -L -o class-dump.zip https://github.com/nygard/class-dump/releases/download/1.10/class-dump-1.10.zip
+          unzip -q class-dump.zip -d class-dump-bin
+          sudo cp class-dump-bin/class-dump /usr/local/bin/
+          chmod +x /usr/local/bin/class-dump
+      
+      - name: Download IPA
         run: |
-          mkdir -p /tmp/report
-
-          # 1. Extract ObjC class list (nm)
-          echo "=== ObjC Classes ===" > /tmp/report/classes.txt
-          nm -gU /tmp/Lead.dylib 2>/dev/null | grep -E 'OBJC_CLASS' | sed 's/.*_OBJC_CLASS_\$_//' | sort -u >> /tmp/report/classes.txt
-          echo "" >> /tmp/report/classes.txt
-
-          # 2. Extract ObjC ivars
-          echo "=== ObjC IVars ===" >> /tmp/report/classes.txt
-          nm -gU /tmp/Lead.dylib 2>/dev/null | grep 'OBJC_IVAR' | sed 's/.*_OBJC_IVAR_\$_//' | sort -u >> /tmp/report/classes.txt
-
-          # 3. List all ObjC method names (otool)
-          echo "=== ObjC Method Selectors ===" > /tmp/report/selectors.txt
-          otool -ov /tmp/Lead.dylib 2>/dev/null | grep -E 'name.*0x' | head -200 >> /tmp/report/selectors.txt
-          echo "" >> /tmp/report/selectors.txt
-          echo "=== All ObjC protocol/class declarations ===" >> /tmp/report/selectors.txt
-          otool -ov /tmp/Lead.dylib 2>/dev/null | grep -E '(class|protocol) name' | head -100 >> /tmp/report/selectors.txt
-
-          # 4. Swift demangling
-          echo "=== Swift symbols (demangled) ===" > /tmp/report/swift.txt
-          nm -gU /tmp/Lead.dylib 2>/dev/null | grep 'TtC\|$s' | head -50 | while read line; do
-            sym=$(echo "$line" | awk '{print $NF}')
-            demangled=$(echo "$sym" | xcrun swift-demangle 2>/dev/null || echo "$sym")
-            echo "$demangled" >> /tmp/report/swift.txt
+          curl -L -o app.ipa "${{ inputs.ipa_url }}"
+          unzip -q app.ipa -d extracted/
+          APP_DIR=$(find extracted -name "*.app" -type d | head -1)
+          echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
+      
+      - name: Class-dump main binary
+        run: |
+          BINARY="$APP_DIR/$(basename $APP_DIR .app)"
+          mkdir -p output/main
+          class-dump -H "$BINARY" -o output/main/ 2>&1 | tail -5 || echo "class-dump main failed"
+          echo "=== Main binary classes ==="
+          ls output/main/ 2>/dev/null | head -20
+      
+      - name: Class-dump frameworks
+        run: |
+          mkdir -p output/frameworks
+          for fw in "$APP_DIR/Frameworks/"*.framework; do
+            fwname=$(basename "$fw" .framework)
+            fw_binary=$(find "$fw" -maxdepth 1 -type f ! -name '*.plist' ! -name '*.tbd' | head -1)
+            if [ -n "$fw_binary" ]; then
+              mkdir -p "output/frameworks/$fwname"
+              class-dump -H "$fw_binary" -o "output/frameworks/$fwname/" 2>&1 | tail -1
+              class_count=$(ls "output/frameworks/$fwname/" 2>/dev/null | wc -l)
+              echo "$fwname: $class_count classes" >> output/framework_summary.txt
+            fi
           done
-
-          # 5. Feature keys from strings
-          echo "=== Feature key strings ===" > /tmp/report/features.txt
-          strings /tmp/Lead.dylib | grep -E '^k[A-Z][a-zA-Z]+' | sort -u >> /tmp/report/features.txt
-          echo "" >> /tmp/report/features.txt
-          echo "=== Selectors relevant to UI features ===" >> /tmp/report/features.txt
-          strings /tmp/Lead.dylib | grep -E '(updateWithPeer|isVoice|isVideoNote|isCopyProtected|copyProtect|canTranslate|isPremium|consumeMessage|setMaximum|hidePhone|noForwards|toggleRecording|SharedCallAudio|viewDidAppear|layoutSubviews)' | sort -u >> /tmp/report/features.txt
-
-      - name: Show results
-        run: |
-          for f in /tmp/report/*.txt; do
-            echo ""
-            echo "=== $(basename $f .txt) ==="
-            head -30 "$f"
-          done
-
-      - uses: actions/upload-artifact@v4
+          cat output/framework_summary.txt
+      
+      - name: Upload headers
+        uses: actions/upload-artifact@v4
         with:
-          name: lead-analysis
-          path: /tmp/report/
+          name: classdump-headers
+          path: output/
