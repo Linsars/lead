@@ -1,61 +1,48 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
-#import <objc/message.h>
+
+// 不直接 hook CallControllerNodeV2（可能没注册到 ObjC 运行时）
+// 改为 hook UIViewController.viewDidAppear:，然后用 isKindOfClass: 过滤
 
 @interface LeadRecorder : NSObject
-+ (void)_injectButtonInto:(id)controller;
++ (void)_injectButtonInto:(UIViewController *)vc;
 @end
+
+static void (*orig_viewDidAppear)(id, SEL, BOOL);
+static void replaced_viewDidAppear(id self, SEL _cmd, BOOL animated) {
+    orig_viewDidAppear(self, _cmd, animated);
+    [LeadRecorder _injectButtonInto:self];
+}
 
 %ctor {
     @autoreleasepool {
-        NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
-        [d setBool:YES forKey:@"kCallRecording"];
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"kCallRecording"];
         
-        NSArray *names = @[
-            @"_TtC15TelegramCallsUI20CallControllerNodeV2",
-            @"CallControllerNodeV2"
-        ];
-        
-        for (NSString *name in names) {
-            Class cls = NSClassFromString(name);
-            if (!cls) continue;
-            
-            SEL sel = @selector(viewDidAppear:);
-            Method m = class_getInstanceMethod(cls, sel);
-            IMP orig = m ? method_getImplementation(m) : NULL;
-            
-            IMP block = imp_implementationWithBlock(^(id _self, BOOL animated) {
-                if (orig) {
-                    ((void(*)(id,SEL,BOOL))orig)(_self, sel, animated);
-                } else {
-                    struct objc_super super = { _self, class_getSuperclass(cls) };
-                    ((void(*)(struct objc_super*, SEL, BOOL))objc_msgSendSuper)(&super, sel, animated);
-                }
-                [LeadRecorder _injectButtonInto:_self];
-            });
-            
-            if (m) {
-                method_setImplementation(m, block);
-            } else {
-                class_addMethod(cls, sel, block, "v@:B");
-            }
-            
-            IMP toggleBlock = imp_implementationWithBlock(^(id _self) {
-                @try {
-                    id device = [NSClassFromString(@"SharedCallAudioDevice") performSelector:@selector(shared)];
-                    if (device) [device performSelector:@selector(lead_toggleRecording)];
-                } @catch(id e) {}
-            });
-            class_addMethod(cls, @selector(lead_toggleRecording), toggleBlock, "v@:");
-            break;
+        Method m = class_getInstanceMethod([UIViewController class], @selector(viewDidAppear:));
+        if (m) {
+            orig_viewDidAppear = (void(*)(id,SEL,BOOL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)replaced_viewDidAppear);
         }
     }
 }
 
 @implementation LeadRecorder
-+ (void)_injectButtonInto:(id)controller {
++ (void)_injectButtonInto:(UIViewController *)vc {
+    // 只对 CallControllerNodeV2 实例注入按钮
+    static Class targetCls = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        targetCls = NSClassFromString(@"_TtC15TelegramCallsUI20CallControllerNodeV2");
+        if (!targetCls) targetCls = NSClassFromString(@"CallControllerNodeV2");
+    });
+    
+    if (!targetCls) return;
+    if (![vc isKindOfClass:targetCls]) return;
+    
     static int kTag = 42070;
-    if ([controller viewWithTag:kTag]) return;
+    if ([vc.view viewWithTag:kTag]) return;
+    if (!vc.isViewLoaded || !vc.view.window) return;
+    
     @try {
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
         btn.tag = kTag;
@@ -66,9 +53,17 @@
         btn.frame = CGRectMake(20, 60, btn.frame.size.width + 16, 36);
         btn.layer.cornerRadius = 8;
         btn.backgroundColor = [UIColor.systemGrayColor colorWithAlphaComponent:0.2];
-        [btn addTarget:controller action:@selector(lead_toggleRecording) forControlEvents:UIControlEventTouchUpInside];
-        id view = [controller valueForKey:@"view"];
-        if (view) [view addSubview:btn];
+        [btn addTarget:vc action:NSSelectorFromString(@"lead_toggleRecording") forControlEvents:UIControlEventTouchUpInside];
+        [vc.view addSubview:btn];
+        
+        // 添加 toggle recording 方法
+        IMP toggleImp = imp_implementationWithBlock(^(id _self) {
+            @try {
+                id device = [NSClassFromString(@"SharedCallAudioDevice") performSelector:@selector(shared)];
+                if (device) [device performSelector:@selector(lead_toggleRecording)];
+            } @catch(id e) {}
+        });
+        class_addMethod([vc class], @selector(lead_toggleRecording), toggleImp, "v@:");
     } @catch(id e) {}
 }
 @end
