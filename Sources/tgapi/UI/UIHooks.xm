@@ -2,6 +2,10 @@
 // Only hooks classes that are ObjC-accessible in Telegram 12.8+
 // ================================================================
 
+#import <UIKit/UIKit.h>
+#import "../Constants.h"
+@class TGLocalization;
+
 static TGLocalization *TGLocalizationShared = nil;
 static BOOL _leadGestureAttached = NO;
 static LeadGestureTarget *_leadGestureTarget = nil;
