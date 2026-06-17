@@ -62,15 +62,6 @@ void showUI();
 // This catches ads that were already cached (5-min cache) and bypasses
 // the API-level block in FunctionHandler.m for those cases.
 - (id)adAttribute {
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableAllAds]) {
-        return nil;
-    }
-    return %orig;
-    if (%orig) return YES;
-    NSString *mime = [self mimeType];
-    if ([mime hasPrefix:@"audio/"]) {
-        return YES;
-    }
     return NO;
 }
 

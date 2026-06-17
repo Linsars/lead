@@ -8,7 +8,7 @@
 
 // Announcements are fetched from this JSON file on GitHub
 static NSString *const kLeadAnnouncementsURL = @"https://raw.githubusercontent.com/Linsars/lead/main/announcements.json";
-static NSString *const kLeadTweakVersion = @"1.3.9.1";
+static NSString *const kLeadTweakVersion = @"1.3.9.2";
 
 @interface Lead ()
 @property(nonatomic, strong) UITableView *tableView;
@@ -56,8 +56,8 @@ static NSString *const kLeadTweakVersion = @"1.3.9.1";
   versionLabel.textAlignment = NSTextAlignmentCenter;
   versionLabel.numberOfLines = 0;
 
-  NSString *version = @"1.3.9.1";
-  NSString *build = @"104";
+  NSString *version = @"1.3.9.2";
+  NSString *build = @"105";
   versionLabel.text = [NSString
       stringWithFormat:@"Lead Version %@ (Build %@)\n© 2026 Lead Team", version,
                        build];
