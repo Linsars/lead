@@ -2,11 +2,17 @@
 // Only hooks classes that are ObjC-accessible in Telegram 12.8+
 // ================================================================
 
+#import "../Logger/Logger.h"
+#import <objc/runtime.h>
+@class ASDisplayNode;
 #import <UIKit/UIKit.h>
 #import "../Constants.h"
 @class TGLocalization;
 
 
+
+void tryAttachLeadGesture(void);
+void showUI(void);
 // Helper class for gesture handling
 @interface LeadGestureTarget : NSObject
 - (void)handleLongPress:(UILongPressGestureRecognizer *)gesture;
@@ -61,6 +67,7 @@ static TGLocalization *getActiveTGLocalization(void) {
     return TGLocalizationShared;
 }
 
+void tryAttachLeadGesture(void);
 void showUI(void);
 
 %hook TGLocalization
@@ -123,7 +130,7 @@ void tryAttachLeadGesture(void) {
     }
 }
 
-static void showUI(void) {
+void showUI(void) {
     if (!_leadGestureTarget) _leadGestureTarget = [LeadGestureTarget new];
     [_leadGestureTarget showWelcomeAlertIfNeeded];
 }
