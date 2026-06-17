@@ -10,65 +10,27 @@ jobs:
   classdump:
     runs-on: macos-15
     steps:
-      - name: Install tools
-        run: |
-          # Install jtool if possible, else use nm/otool built-in
-          which class-dump 2>/dev/null && echo "class-dump exists" || echo "no class-dump"
-          which jtool 2>/dev/null && echo "jtool exists" || echo "no jtool"
-          which nm && which otool && echo "nm/otool available"
-          # Try installing class-dump via brew
-          brew install class-dump 2>/dev/null || echo "brew class-dump failed"
-          which class-dump 2>/dev/null && echo "class-dump now available" || echo "class-dump still not found"
-      
-      - name: Download IPA
+      - name: Download and extract IPA
         run: |
           curl -L -o app.ipa "${{ inputs.ipa_url }}"
           unzip -q app.ipa -d extracted/
           APP_DIR=$(find extracted -name "*.app" -type d | head -1)
           echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
       
-      - name: Analyze main binary
+      - name: OTool all frameworks
         run: |
-          BINARY="$APP_DIR/$(basename $APP_DIR .app)"
           mkdir -p output
-          # Dump ObjC class list and methods using nm/otool
-          echo "=== Main Binary ObjC Classes ===" > output/main_classes.txt
-          nm -U "$BINARY" 2>/dev/null | grep -E "^[0-9a-f]+ S _OBJC_CLASS_\$_" | sed 's/.*_OBJC_CLASS_\$_//' >> output/main_classes.txt
-          echo "=== Main Binary ObjC Methods (selected) ===" >> output/main_classes.txt
-          nm -U "$BINARY" 2>/dev/null | grep -E "^[0-9a-f]+ S _OBJC_METH_VAR_NAME_" >> output/main_classes.txt
-      
-      - name: Analyze frameworks
-        run: |
           for fw in "$APP_DIR/Frameworks/"*.framework; do
             fwname=$(basename "$fw" .framework)
             fw_binary=$(find "$fw" -maxdepth 1 -type f ! -name '*.plist' ! -name '*.tbd' | head -1)
             if [ -n "$fw_binary" ]; then
-              output_file="output/${fwname}_analysis.txt"
-              echo "=== $fwname ===" > "$output_file"
-              echo "--- ObjC Classes ---" >> "$output_file"
-              nm -U "$fw_binary" 2>/dev/null | grep -E "^[0-9a-f]+ S _OBJC_CLASS_\$_" | sed 's/.*\$//' >> "$output_file"
-              echo "--- All Selectors ---" >> "$output_file"
-              nm -U "$fw_binary" 2>/dev/null | grep -E "_OBJC_METH_VAR_NAME_" | sed 's/.*_OBJC_METH_VAR_NAME_//' >> "$output_file"
-              class_count=$(grep -c '^_TtC\|^[A-Z]' "$output_file" 2>/dev/null || echo 0)
-              echo "$fwname: done" >&2
-            fi
-          done
-      
-      - name: Use class-dump via Swift
-        run: |
-          # Try swift demangler to get readable class names
-          for fw in "$APP_DIR/Frameworks/"*.framework; do
-            fwname=$(basename "$fw" .framework)
-            fw_binary=$(find "$fw" -maxdepth 1 -type f ! -name '*.plist' ! -name '*.tbd' | head -1)
-            if [ -n "$fw_binary" ]; then
-              echo "=== $fwname ObjC selectors by class ===" >> output/${fwname}_detailed.txt
-              # Use otool to get ObjC class info
-              otool -ov "$fw_binary" 2>/dev/null | grep -E "(Contents of|Method name|class name|ivars|instance)" | head -200 >> output/${fwname}_detailed.txt
+              otool -ov "$fw_binary" > "output/${fwname}.otool.txt" 2>&1 || echo "otool failed for $fwname"
+              echo "$fwname: $(wc -c < "output/${fwname}.otool.txt") bytes"
             fi
           done
       
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: analysis-output
+          name: otool-output
           path: output/
