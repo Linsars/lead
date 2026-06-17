@@ -6,6 +6,45 @@
 #import "../Constants.h"
 @class TGLocalization;
 
+
+// Helper class for gesture handling
+@interface LeadGestureTarget : NSObject
+- (void)handleLongPress:(UILongPressGestureRecognizer *)gesture;
+- (void)showWelcomeAlertIfNeeded;
+@end
+
+@implementation LeadGestureTarget
+- (void)handleLongPress:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state == UIGestureRecognizerStateBegan) {
+        // Handle long press - show lead menu
+        // Find the view controller and present the lead settings
+        UIView *view = gesture.view;
+        UIResponder *responder = view;
+        while (responder) {
+            if ([responder isKindOfClass:[UIViewController class]]) {
+                // Present lead settings
+                break;
+            }
+            responder = [responder nextResponder];
+        }
+    }
+}
+- (void)showWelcomeAlertIfNeeded {
+    // Show welcome alert if first launch
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:@"Lead_WelcomeShown"]) {
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"Lead_WelcomeShown"];
+        // Show alert on main thread
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Lead" message:@"Lead tweak loaded" preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            // Present from root VC
+            id rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+            if (rootVC) [rootVC presentViewController:alert animated:YES completion:nil];
+        });
+    }
+}
+@end
+
 static TGLocalization *TGLocalizationShared = nil;
 static BOOL _leadGestureAttached = NO;
 static LeadGestureTarget *_leadGestureTarget = nil;

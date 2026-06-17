@@ -9,7 +9,7 @@
     if (peerInfoClass && [self isKindOfClass:peerInfoClass]) {
         // Found the profile screen, delay to let view hierarchy settle
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self showProfileIdIfNeeded];
+            [self performSelector:@selector(showProfileIdIfNeeded)];
         });
     }
 }
