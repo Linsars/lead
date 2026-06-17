@@ -54,17 +54,7 @@ static TGLocalization *getActiveTGLocalization(void) {
     return nil;
 }
 
-void showUI();
-
-
-
-// Suppress ad attribute so Telegram treats the message as non-sponsored.
-// This catches ads that were already cached (5-min cache) and bypasses
-// the API-level block in FunctionHandler.m for those cases.
-- (id)adAttribute {
-    return NO;
-}
-
+%hook TGLocalization
 
 
 
@@ -78,12 +68,7 @@ void showUI();
     return %orig;
 }
 
-- (id)initWithVersion:(int)a code:(id)b dict:(id)c isActive:(BOOL)d {
-    TGLocalization *instance = %orig;
-    if (instance) {
-        TGLocalizationShared = instance;
-        // Settings may already be rendered — try to attach gesture now
-        if (!_leadGestureAttached) {
+%end
 
 static void tryAttachLeadGestureInView(UIView *view) {
     if (!view) return;
