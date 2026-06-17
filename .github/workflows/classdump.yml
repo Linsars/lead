@@ -1,16 +1,9 @@
 name: class-dump
 on:
   workflow_dispatch:
-    inputs:
-      target:
-        description: 'Binary to analyze (lead / telegram / teledark)'
-        default: 'lead'
-        type: choice
-        options: [lead, telegram, teledark, both]
 
 jobs:
-  classdump_lead:
-    if: ${{ github.event.inputs.target == 'lead' || github.event.inputs.target == 'both' }}
+  classdump:
     runs-on: macos-15
     steps:
       - name: Download Lead dylib from release
@@ -19,7 +12,6 @@ jobs:
             -H "Accept: application/octet-stream" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/analysis" \
             -o /tmp/release.json
-          # Get asset download URL
           ASSET_URL=$(python3 -c "
 import json
 d = json.load(open('/tmp/release.json'))
@@ -35,36 +27,30 @@ for a in d['assets']:
       - name: Install class-dump
         run: |
           brew install class-dump 2>/dev/null || brew install --cask class-dump 2>/dev/null || \
-            curl -sL "https://github.com/nygard/class-dump/archive/refs/tags/3.5.tar.gz" | tar xz && \
+            (curl -sL "https://github.com/nygard/class-dump/archive/refs/tags/3.5.tar.gz" | tar xz && \
             cd class-dump-3.5 && xcodebuild -scheme class-dump SYMROOT=/tmp/classdump_build && \
             sudo cp /tmp/classdump_build/Release/class-dump /usr/local/bin/ && \
-            cd /tmp && rm -rf class-dump-3.5
+            cd /tmp && rm -rf class-dump-3.5)
 
-      - name: class-dump Lead.dylib
+      - name: class-dump
         run: |
           mkdir -p /tmp/headers/lead
           class-dump --arch arm64 /tmp/Lead.dylib -H -o /tmp/headers/lead/ 2>&1 || \
             class-dump /tmp/Lead.dylib -H -o /tmp/headers/lead/ 2>&1 || \
             echo "class-dump failed"
-          echo "Files generated: $(find /tmp/headers/lead -name '*.h' | wc -l)"
-
-      - name: Upload Lead headers
-        uses: actions/upload-artifact@v4
-        with:
-          name: lead-headers
-          path: /tmp/headers/lead/
+          echo "Headers: $(find /tmp/headers/lead -name '*.h' | wc -l)"
 
       - name: Extract key info
         run: |
-          echo "=== Lead referenced classes ===" > /tmp/summary.txt
-          grep -rh "_OBJC_CLASS_\|@interface\|@protocol" /tmp/headers/lead/ 2>/dev/null | sort -u >> /tmp/summary.txt
+          echo "=== Lead ObjC interfaces ===" > /tmp/summary.txt
+          grep -rh "@interface" /tmp/headers/lead/ 2>/dev/null | sort -u >> /tmp/summary.txt
           echo "" >> /tmp/summary.txt
           echo "=== Feature keys ===" >> /tmp/summary.txt
           strings /tmp/Lead.dylib | grep -E '^k[A-Z]' | sort -u >> /tmp/summary.txt
           cat /tmp/summary.txt
 
-      - name: Upload summary
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: lead-summary
-          path: /tmp/summary.txt
+          name: lead-headers
+          path: /tmp/headers/lead/
