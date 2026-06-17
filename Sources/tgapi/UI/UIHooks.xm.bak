@@ -21,7 +21,7 @@
 @interface _TtC18MultiScaleTextNode18MultiScaleTextNode : ASDisplayNode
 @end
 
-@interface _TtCC20StoryContainerScreen30StoryItemSetContainerComponent4View : UIView
+@interface _TtCC20StoryContainerScreen32StoryItemSetContainerComponent4View : UIView
 - (void)requestSave;
 @end
 
@@ -56,7 +56,31 @@ static TGLocalization *getActiveTGLocalization(void) {
 
 void showUI();
 
+%hook _TtC10TelegramUI29ChatPresentationInterfaceState
+- (BOOL)copyProtectionEnabled {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
+        return NO;
+    }
+    return %orig;
+}
+%end
 
+%hook _TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState
+- (BOOL)copyProtectionEnabled {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
+        return NO;
+    }
+    return %orig;
+}
+%end
+
+%hook _TtC7Postbox7Message
+- (BOOL)isCopyProtected {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
+        return NO;
+    }
+    return %orig;
+}
 
 // Suppress ad attribute so Telegram treats the message as non-sponsored.
 // This catches ads that were already cached (5-min cache) and bypasses
@@ -66,6 +90,24 @@ void showUI();
         return nil;
     }
     return %orig;
+}
+%end
+
+// ============================================================
+// Send as Voice: make audio files appear and behave as voice messages.
+// Hooks TelegramMediaFile.isVoice — when kSendAsVoice is enabled and
+// the file has an audio mimeType, report it as a voice message.
+// ============================================================
+@interface _TtC12TelegramCore16TelegramMediaFile : NSObject
+- (NSString *)mimeType;
+@end
+
+%hook _TtC12TelegramCore16TelegramMediaFile
+
+- (BOOL)isVoice {
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kSendAsVoice]) {
+        return %orig;
+    }
     if (%orig) return YES;
     NSString *mime = [self mimeType];
     if ([mime hasPrefix:@"audio/"]) {
@@ -76,8 +118,39 @@ void showUI();
 
 %end
 
+%hook ChatMessageItem
+- (BOOL)noForwards {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
+        return NO;
+    }
+    return %orig;
+}
+%end
 
+%hook ApiChat
+- (BOOL)noForwards {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
+        return NO;
+    }
+    return %orig;
+}
+%end
 
+static BOOL _leadGestureAttached = NO;
+
+// Helper target object for late-attached gestures
+@interface LeadGestureTarget : NSObject
+@end
+@implementation LeadGestureTarget
+- (void)handleLongPress:(UILongPressGestureRecognizer *)gr {
+    if (gr.state == UIGestureRecognizerStateBegan) showUI();
+}
+@end
+static LeadGestureTarget *_leadGestureTarget = nil;
+
+static void tryAttachLeadGesture(void);
+
+%hook TGLocalization
 - (id)get:(id)key {
     TGLocalizationShared = self;
     if (!_leadGestureAttached) {
@@ -94,6 +167,14 @@ void showUI();
         TGLocalizationShared = instance;
         // Settings may already be rendered — try to attach gesture now
         if (!_leadGestureAttached) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                tryAttachLeadGesture();
+            });
+        }
+    }
+    return instance;
+}
+%end
 
 static void tryAttachLeadGestureInView(UIView *view) {
     if (!view) return;
@@ -103,6 +184,14 @@ static void tryAttachLeadGestureInView(UIView *view) {
         if (label.length > 0 && loc) {
             NSString *supportStr = [loc get:@"Settings.Support"];
             if (supportStr.length > 0 && ![supportStr isEqualToString:@"Settings.Support"] &&
+                [[label lowercaseString] containsString:[supportStr lowercaseString]]) {
+                UIView *parent = view.superview;
+                if (parent) {
+                    BOOL alreadyHas = NO;
+                    for (UIGestureRecognizer *g in parent.gestureRecognizers) {
+                        if ([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                            alreadyHas = YES; break;
+                        }
                     }
                     if (!alreadyHas) {
                         if (!_leadGestureTarget) _leadGestureTarget = [LeadGestureTarget new];
@@ -629,6 +718,23 @@ static NSHashTable *activeMessageNodes = nil;
 }
 %end
 
+%hook _TtC10TelegramUI14ChatController
+- (void)viewDidLoad {
+    %orig;
+    @try {
+        id context = [((id)self) valueForKey:@"context"];
+        Class tlParser = NSClassFromString(@"TLParser");
+        if ([tlParser respondsToSelector:@selector(setSharedContext:)]) {
+            [tlParser performSelector:@selector(setSharedContext:) withObject:context];
+            
+            NSNumber *currId = [tlParser performSelector:@selector(getCurrentUserId)];
+            if (currId) {
+                [[NSUserDefaults standardUserDefaults] setInteger:[currId integerValue] forKey:@"LeadLastKnownUserId"];
+            }
+        }
+    } @catch (NSException *e) {}
+}
+%end
 
 %hook _TtC10TelegramUI22TelegramRootController
 - (void)loadView {
@@ -677,6 +783,23 @@ static NSHashTable *activeMessageNodes = nil;
                                                                                    message:nil
                                                                             preferredStyle:UIAlertControllerStyleAlert];
                     
+                    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                                             style:UIAlertActionStyleCancel
+                                                           handler:nil]];
+                    [alert addAction:[UIAlertAction actionWithTitle:confirmTitle
+                                                             style:UIAlertActionStyleDefault
+                                                           handler:^(UIAlertAction *action) {
+                        %orig(controlEvents, event);
+                    }]];
+                    
+                    [rootVC presentViewController:alert animated:YES completion:nil];
+                    return;
+                }
+            }
+        }
+    }
+    %orig;
+}
 %end
 
 %end // CallConfirmHooks
@@ -721,7 +844,7 @@ static NSHashTable *activeMessageNodes = nil;
 // Hooks StoryItemSetContainerComponent.View — calls requestSave
 // automatically when the story becomes visible.
 // ============================================================
-%hook _TtCC20StoryContainerScreen30StoryItemSetContainerComponent4View
+%hook _TtCC20StoryContainerScreen32StoryItemSetContainerComponent4View
 
 - (void)didMoveToWindow {
     %orig;
@@ -773,7 +896,14 @@ static void hook() {
     }];
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        // Dead group removed: classes not ObjC-accessible in Telegram 12.8
+        %init(
+            ChatMessageItem = objc_getClass("_TtC10TelegramUI15ChatMessageItem"),
+            ApiChat = objc_getClass("_TtC10TelegramUI11ApiChat"),
+            _TtC10TelegramUI29ChatPresentationInterfaceState = objc_getClass("_TtC10TelegramUI29ChatPresentationInterfaceState"),
+            _TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState = objc_getClass("_TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState"),
+            _TtC10TelegramUI14ChatController = objc_getClass("_TtC10TelegramUI14ChatController"),
+            _TtC7Postbox7Message = objc_getClass("_TtC7Postbox7Message")
+        );
 
         @try {
             Class asControlNodeClass = objc_getClass("ASControlNode");
