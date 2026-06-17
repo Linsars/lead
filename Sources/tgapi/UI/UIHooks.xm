@@ -71,22 +71,27 @@ static TGLocalization *getActiveTGLocalization(void) {
 %end
 
 static void tryAttachLeadGestureInView(UIView *view) {
-    if (!view) return;
+    if (!view || _leadGestureAttached) return;
     if ([NSStringFromClass([view class]) isEqualToString:@"Display.AccessibilityAreaNode"]) {
         NSString *label = view.accessibilityLabel;
         TGLocalization *loc = getActiveTGLocalization();
         if (label.length > 0 && loc) {
-            NSString *supportStr = [loc get:@"Settings.Support"];
-            if (supportStr.length > 0 && ![supportStr isEqualToString:@"Settings.Support"] &&
+            UIView *parent = view.superview;
+            if (parent) {
+                BOOL alreadyHas = NO;
+                for (UIGestureRecognizer *g in parent.gestureRecognizers) {
+                    if ([g isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                        alreadyHas = YES;
+                        break;
                     }
-                    if (!alreadyHas) {
-                        if (!_leadGestureTarget) _leadGestureTarget = [LeadGestureTarget new];
-                        UILongPressGestureRecognizer *gr = [[UILongPressGestureRecognizer alloc]
-                            initWithTarget:_leadGestureTarget action:@selector(handleLongPress:)];
-                        [parent addGestureRecognizer:gr];
-                        _leadGestureAttached = YES;
-                        customLog2(@"[Lead] late-attach OK: %@", label);
-                    }
+                }
+                if (!alreadyHas) {
+                    if (!_leadGestureTarget) _leadGestureTarget = [LeadGestureTarget new];
+                    UILongPressGestureRecognizer *gr = [[UILongPressGestureRecognizer alloc]
+                        initWithTarget:_leadGestureTarget action:@selector(handleLongPress:)];
+                    [parent addGestureRecognizer:gr];
+                    _leadGestureAttached = YES;
+                    customLog2(@"[Lead] late-attach OK: %@", label);
                 }
             }
         }
