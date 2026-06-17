@@ -1,21 +1,15 @@
 #import <UIKit/UIKit.h>
 
-// Teledark 12.8: SharedCallAudioDevice ObjC class still exists but has custom 
-// Teledark recording methods. The UserDefaults key approach is more reliable.
-// Hook CallControllerNodeV2 to inject recording button if Teledark's own key 
-// doesn't enable it.
+// 12.8: CallControllerNodeV2 still exists. Hook viewDidAppear to inject recording button.
 
 static BOOL isCallRecordingEnabled(void) {
     return [[NSUserDefaults standardUserDefaults] boolForKey:@"kCallRecording"];
 }
 
-%group call_recording
 %hook _TtC15TelegramCallsUI20CallControllerNodeV2
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
     if (!isCallRecordingEnabled()) return;
-    // Teledark already has teledark_call_recording_button_enabled
-    // This hook is a fallback in case Teledark's own toggle isn't on
     static int kTag = 42070;
     if ([self viewWithTag:kTag]) return;
     
@@ -35,12 +29,11 @@ static BOOL isCallRecordingEnabled(void) {
 }
 
 - (void)lead_toggleRecording {
-    // Use Teledark's SharedCallAudioDevice if available
-    id device = nil;
-    @try { device = [NSClassFromString(@"SharedCallAudioDevice") performSelector:@selector(shared)]; } @catch(id e) {}
-    if (device) {
-        @try { [device performSelector:@selector(lead_toggleRecording)]; } @catch(id e) {}
-    }
+    @try {
+        id device = [NSClassFromString(@"SharedCallAudioDevice") performSelector:@selector(shared)];
+        if (device) {
+            [device performSelector:@selector(lead_toggleRecording)];
+        }
+    } @catch(id e) {}
 }
-%end
 %end

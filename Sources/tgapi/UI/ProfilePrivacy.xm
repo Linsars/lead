@@ -4,18 +4,16 @@ static BOOL isProfileIDEnabled(void) {
     return [[NSUserDefaults standardUserDefaults] boolForKey:@"kShowProfileId"];
 }
 
-%group profile_id
 %hook PeerInfoHeaderNode
 - (void)layoutSubviews {
     %orig;
     if (!isProfileIDEnabled()) return;
-    // Already has the ID label? skip
+    
     static int kTag = 42069;
     UIView *existing = [self viewWithTag:kTag];
     if (existing) return;
     
-    // Find peer ID from the peer info node's internal data
-    // Use valueForKey to extract _id or peerId
+    // Extract peer ID via KVC
     id peer = nil;
     @try { peer = [self valueForKey:@"peer"]; } @catch(id e) {}
     if (!peer) @try { peer = [self valueForKey:@"_peer"]; } @catch(id e) {}
@@ -36,5 +34,4 @@ static BOOL isProfileIDEnabled(void) {
                              label.frame.size.width + 8, 20);
     [self addSubview:label];
 }
-%end
 %end
