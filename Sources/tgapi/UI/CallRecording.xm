@@ -1,23 +1,77 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
-// Pure runtime swizzle — no Logos %hook dependency
-// Teledark 12.8: CallControllerNodeV2 inherits from UIViewController.
-// viewDidAppear: exists on the class chain. We swizzle it directly.
+%ctor {
+    @autoreleasepool {
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{
+            BOOL enabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"kCallRecording"];
+            if (!enabled) return;
+            
+            NSArray *names = @[
+                @"_TtC15TelegramCallsUI20CallControllerNodeV2",
+                @"CallControllerNodeV2"
+            ];
+            
+            for (NSString *name in names) {
+                Class cls = NSClassFromString(name);
+                if (!cls) {
+                    NSLog(@"[Lead] CallRec: class %@ not found", name);
+                    continue;
+                }
+                
+                NSLog(@"[Lead] CallRec: found class %@", name);
+                
+                // Handle viewDidAppear: — class may NOT override it, add method safely
+                SEL sel = @selector(viewDidAppear:);
+                Method m = class_getInstanceMethod(cls, sel);
+                
+                if (m) {
+                    // Class has its own implementation — swizzle
+                    IMP orig = method_getImplementation(m);
+                    IMP replacement = imp_implementationWithBlock(^(id _self, BOOL animated) {
+                        ((void(*)(id,SEL,BOOL))orig)(_self, sel, animated);
+                        [LeadRecorder _injectButtonInto:_self];
+                    });
+                    method_setImplementation(m, replacement);
+                    NSLog(@"[Lead] CallRec: swizzled viewDidAppear: on %@", name);
+                } else {
+                    // Class doesn't override viewDidAppear: — add override
+                    IMP block = imp_implementationWithBlock(^(id _self, BOOL animated) {
+                        struct objc_super super = { _self, [_self superclass] };
+                        ((void(*)(struct objc_super*, SEL, BOOL))objc_msgSendSuper)(&super, sel, animated);
+                        [LeadRecorder _injectButtonInto:_self];
+                    });
+                    class_addMethod(cls, sel, block, "v@:B");
+                    NSLog(@"[Lead] CallRec: added viewDidAppear: on %@", name);
+                }
+                
+                // Add lead_toggleRecording method
+                IMP toggleBlock = imp_implementationWithBlock(^(id _self) {
+                    @try {
+                        id device = [NSClassFromString(@"SharedCallAudioDevice") performSelector:@selector(shared)];
+                        if (device) {
+                            [device performSelector:@selector(lead_toggleRecording)];
+                        }
+                    } @catch(id e) {}
+                });
+                class_addMethod(cls, @selector(lead_toggleRecording), toggleBlock, "v@:");
+                
+                break;
+            }
+        });
+    }
+}
 
-static void (*orig_viewDidAppear)(id, SEL, BOOL);
-static void replaced_viewDidAppear(id self, SEL _cmd, BOOL animated) {
-    orig_viewDidAppear(self, _cmd, animated);
-    
+// Helper class for clean code organization
+@interface LeadRecorder : NSObject
++ (void)_injectButtonInto:(id)controller;
+@end
+
+@implementation LeadRecorder
++ (void)_injectButtonInto:(id)controller {
     static int kTag = 42070;
-    if ([self viewWithTag:kTag]) return;
-    
-    static BOOL enabled = NO;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        enabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"kCallRecording"];
-    });
-    if (!enabled) return;
+    if ([controller viewWithTag:kTag]) return;
     
     @try {
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -29,49 +83,10 @@ static void replaced_viewDidAppear(id self, SEL _cmd, BOOL animated) {
         btn.frame = CGRectMake(20, 60, btn.frame.size.width + 16, 36);
         btn.layer.cornerRadius = 8;
         btn.backgroundColor = [UIColor.systemGrayColor colorWithAlphaComponent:0.2];
-        [btn addTarget:self action:@selector(lead_toggleRecording) forControlEvents:UIControlEventTouchUpInside];
+        [btn addTarget:controller action:@selector(lead_toggleRecording) forControlEvents:UIControlEventTouchUpInside];
         
-        id view = [self valueForKey:@"view"];
+        id view = [controller valueForKey:@"view"];
         if (view) [view addSubview:btn];
     } @catch(id e) {}
 }
-
-static void (*orig_toggleRec)(id, SEL);
-static void replaced_toggleRec(id self, SEL _cmd) {
-    @try {
-        id device = [NSClassFromString(@"SharedCallAudioDevice") performSelector:@selector(shared)];
-        if (device) {
-            [device performSelector:@selector(lead_toggleRecording)];
-        }
-    } @catch(id e) {}
-}
-
-%ctor {
-    @autoreleasepool {
-        // Try both class name variants
-        NSArray *names = @[
-            @"_TtC15TelegramCallsUI20CallControllerNodeV2",
-            @"CallControllerNodeV2"
-        ];
-        
-        for (NSString *name in names) {
-            Class cls = NSClassFromString(name);
-            if (!cls) continue;
-            
-            Method m = class_getInstanceMethod(cls, @selector(viewDidAppear:));
-            if (!m) {
-                NSLog(@"[Lead] CallRecording: found class %@ but no viewDidAppear:", name);
-                continue;
-            }
-            
-            orig_viewDidAppear = (void(*)(id,SEL,BOOL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)replaced_viewDidAppear);
-            
-            // Also add lead_toggleRecording method to the class
-            class_addMethod(cls, @selector(lead_toggleRecording), (IMP)replaced_toggleRec, "v@:");
-            
-            NSLog(@"[Lead] CallRecording: swizzled %@ successfully", name);
-            break;
-        }
-    }
-}
+@end
