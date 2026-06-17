@@ -1,4 +1,8 @@
-// Account limit bypass
-// _TtC12TelegramCore7Account is NOT ObjC-accessible (pure Swift class).
-// This feature needs an MTProto-level approach instead.
-// TODO: Implement via intercepting the account limit API response.
+#import "../Constants.h"
+
+static void __attribute__((constructor)) initAccountLimit(void) {
+    @autoreleasepool {
+        // Account limit bypass requires MTProto-level approach
+        // Cannot hook _TtC12TelegramCore7Account (not ObjC-accessible)
+    }
+}
