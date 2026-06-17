@@ -1,54 +1,61 @@
 name: class-dump
-on: [workflow_dispatch]
+on:
+  release:
+    types: [published]
 
 jobs:
   classdump:
+    if: github.event.release.prerelease
     runs-on: macos-15
     steps:
-      - name: Download Lead 1.4.2
+      - name: Download dylib
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -sL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/analysis" \
-            -o /tmp/release.json
-          ASSET_URL=$(python3 -c "
-import json
-d = json.load(open('/tmp/release.json'))
-for a in d['assets']:
-    if 'Lead_1.4.2' in a['name']:
-        print(a['url'])
-")
-          curl -sL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" \
-            "$ASSET_URL" -o /tmp/Lead.dylib
-          echo "Downloaded: $(ls -lh /tmp/Lead.dylib | awk '{print $5}')"
+          gh release download ${{ github.event.release.tag_name }} \
+            --repo ${{ github.repository }} \
+            --pattern 'Lead_1.4.2*' -O /tmp/Lead.dylib 2>&1 || \
+            gh release download ${{ github.event.release.tag_name }} \
+            --repo ${{ github.repository }} \
+            --pattern 'Lead*' -O /tmp/Lead.dylib 2>&1
 
       - name: Install class-dump
         run: |
           brew install class-dump 2>/dev/null || \
             (curl -sL "https://github.com/nygard/class-dump/archive/refs/tags/3.5.tar.gz" | tar xz && \
             cd class-dump-3.5 && xcodebuild -scheme class-dump SYMROOT=/tmp/classdump_build && \
-            sudo cp /tmp/classdump_build/Release/class-dump /usr/local/bin/)
+            sudo cp /tmp/classdump_build/Release/class-dump /usr/local/bin/) 2>&1
 
       - name: class-dump
         run: |
           mkdir -p /tmp/headers/lead
-          class-dump --arch arm64 /tmp/Lead.dylib -H -o /tmp/headers/lead/ 2>&1 || \
-            class-dump /tmp/Lead.dylib -H -o /tmp/headers/lead/ 2>&1 || \
-            echo "class-dump failed"
+          if class-dump --arch arm64 /tmp/Lead.dylib -H -o /tmp/headers/lead/ 2>&1; then
+            echo "class-dump succeeded"
+          elif class-dump /tmp/Lead.dylib -H -o /tmp/headers/lead/ 2>&1; then
+            echo "class-dump (no arch) succeeded"
+          else
+            echo "class-dump FAILED" >&2
+            file /tmp/Lead.dylib
+          fi
           echo "Headers: $(find /tmp/headers/lead -name '*.h' | wc -l)"
+          ls /tmp/headers/lead/ 2>/dev/null | head -10
 
-      - name: Extract info
+      - name: Summary
         run: |
-          echo "=== ObjC interfaces ===" > /tmp/summary.txt
-          grep -rh "@interface" /tmp/headers/lead/ 2>/dev/null | sort -u >> /tmp/summary.txt
-          echo "" >> /tmp/summary.txt
-          echo "=== Feature keys ===" >> /tmp/summary.txt
-          strings /tmp/Lead.dylib | grep -E '^k[A-Z]' | sort -u >> /tmp/summary.txt
-          cat /tmp/summary.txt
+          mkdir -p /tmp/report
+          echo "=== ObjC @interface ===" > /tmp/report/summary.txt
+          grep -hr "@interface" /tmp/headers/lead/ 2>/dev/null | sort -u >> /tmp/report/summary.txt
+          echo "" >> /tmp/report/summary.txt
+          echo "=== Strings (feature keys) ===" >> /tmp/report/summary.txt
+          strings /tmp/Lead.dylib 2>/dev/null | grep -E '^k[A-Z]' | sort -u >> /tmp/report/summary.txt
+          cat /tmp/report/summary.txt
 
-      - name: Upload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: lead-headers
           path: /tmp/headers/lead/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lead-summary
+          path: /tmp/report/
