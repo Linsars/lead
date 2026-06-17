@@ -91,13 +91,8 @@ static void injectBypass(void) {
         [def setInteger:kMaxAccounts forKey:@"TGMaximumNumberOfAccounts"];
         [def synchronize];
 
-        // 2. Try patching via NSClassFromString for runtime premium configs
-        NSArray *targetKeys = @[
-            @"maximumNumberOfAccounts",
-            @"maximumPremiumNumberOfAccounts",
-            @"premiumLimit",
-            @"maxAccounts"
-        ];
+        // 2. Try patching via runtime introspection for premium configs
+        // Keys to look for on Telegram objects
 
         // 3. Try setting on all known Telegram objects via runtime introspection
         // This catches any object that stores limits/premium as ObjC properties
