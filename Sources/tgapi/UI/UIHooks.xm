@@ -183,6 +183,7 @@ static void __attribute__((constructor)) initialize() {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             customLog2(@"[Lead] Setting up hooks...");
             
+            %init();
             %init(CallConfirmHooks);
             %init(SiriBypassHooks);
             
