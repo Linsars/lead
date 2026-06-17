@@ -1,9 +1,13 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
+
+@interface LeadRecorder : NSObject
++ (void)_injectButtonInto:(id)controller;
+@end
 
 %ctor {
     @autoreleasepool {
-        // Set our defaults FIRST, swizzle unconditionally
         NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
         [d setBool:YES forKey:@"kCallRecording"];
         
@@ -18,20 +22,21 @@
             
             SEL sel = @selector(viewDidAppear:);
             Method m = class_getInstanceMethod(cls, sel);
+            IMP orig = m ? method_getImplementation(m) : NULL;
+            
+            IMP block = imp_implementationWithBlock(^(id _self, BOOL animated) {
+                if (orig) {
+                    ((void(*)(id,SEL,BOOL))orig)(_self, sel, animated);
+                } else {
+                    struct objc_super super = { _self, class_getSuperclass(cls) };
+                    ((void(*)(struct objc_super*, SEL, BOOL))objc_msgSendSuper)(&super, sel, animated);
+                }
+                [LeadRecorder _injectButtonInto:_self];
+            });
             
             if (m) {
-                IMP orig = method_getImplementation(m);
-                IMP block = imp_implementationWithBlock(^(id _self, BOOL animated) {
-                    ((void(*)(id,SEL,BOOL))orig)(_self, sel, animated);
-                    [LeadRecorder _injectButtonInto:_self];
-                });
                 method_setImplementation(m, block);
             } else {
-                IMP block = imp_implementationWithBlock(^(id _self, BOOL animated) {
-                    struct objc_super super = { _self, [_self superclass] };
-                    ((void(*)(struct objc_super*, SEL, BOOL))objc_msgSendSuper)(&super, sel, animated);
-                    [LeadRecorder _injectButtonInto:_self];
-                });
                 class_addMethod(cls, sel, block, "v@:B");
             }
             
@@ -47,9 +52,6 @@
     }
 }
 
-@interface LeadRecorder : NSObject
-+ (void)_injectButtonInto:(id)controller;
-@end
 @implementation LeadRecorder
 + (void)_injectButtonInto:(id)controller {
     static int kTag = 42070;

@@ -1,5 +1,10 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
+
+@interface LeadProfileID : NSObject
++ (void)_tryAddIDTo:(id)node;
+@end
 
 %ctor {
     @autoreleasepool {
@@ -19,20 +24,22 @@
             
             SEL sel = @selector(layoutSubviews);
             Method m = class_getInstanceMethod(cls, sel);
+            IMP orig = m ? method_getImplementation(m) : NULL;
+            
+            IMP block = imp_implementationWithBlock(^(id _self) {
+                if (orig) {
+                    ((void(*)(id,SEL))orig)(_self, sel);
+                } else {
+                    // Call up the superclass chain
+                    struct objc_super super = { _self, class_getSuperclass(cls) };
+                    ((void(*)(struct objc_super*, SEL))objc_msgSendSuper)(&super, sel);
+                }
+                [LeadProfileID _tryAddIDTo:_self];
+            });
             
             if (m) {
-                IMP orig = method_getImplementation(m);
-                IMP block = imp_implementationWithBlock(^(id _self) {
-                    ((void(*)(id,SEL))orig)(_self, sel);
-                    [LeadProfileID _tryAddIDTo:_self];
-                });
                 method_setImplementation(m, block);
             } else {
-                IMP block = imp_implementationWithBlock(^(id _self) {
-                    struct objc_super super = { _self, [_self superclass] };
-                    ((void(*)(struct objc_super*, SEL))objc_msgSendSuper)(&super, sel);
-                    [LeadProfileID _tryAddIDTo:_self];
-                });
                 class_addMethod(cls, sel, block, "v@:");
             }
             break;
@@ -40,9 +47,6 @@
     }
 }
 
-@interface LeadProfileID : NSObject
-+ (void)_tryAddIDTo:(id)node;
-@end
 @implementation LeadProfileID
 + (void)_tryAddIDTo:(id)node {
     static int kTag = 42069;
