@@ -19,7 +19,7 @@ static setValueForKeyFunc orig_setValue_forKey = NULL;
 - (void)updateLimitsConfigurationFromConfig:(id)limitsConfig {
     %orig;
     @try {
-        [(id)limitsConfig setMaximumNumberOfAccounts:@(INT_MAX)];
+        [limitsConfig performSelector:@selector(setMaximumNumberOfAccounts:) withObject:@(INT_MAX)];
     } @catch(NSException *e) {
         NSLog(@"[Lead] AccountLimit KVC failed: %@", e);
     }
