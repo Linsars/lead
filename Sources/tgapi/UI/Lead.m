@@ -897,8 +897,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.detailTextLabel.numberOfLines = 0;
         return cell;
       }
-      }
-      case 3:
+      case 3: {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"number"];
         cell.imageView.tintColor = [self dynamicColorBW];
@@ -915,8 +914,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         cell.detailTextLabel.numberOfLines = 0;
         return cell;
       }
-      }
-      case 4:
+      case 4: {
         cell = [self switchCellFromTableView:tableView];
         cell.imageView.image = [UIImage systemImageNamed:@"recordingtape"];
         cell.imageView.tintColor = [UIColor systemRedColor];
