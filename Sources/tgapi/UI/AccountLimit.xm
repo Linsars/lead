@@ -69,7 +69,7 @@
     // Inject account limit bypass into the running app
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        [self injectAccountBypass];
+        injectAccountBypass();
     });
 }
 
@@ -91,7 +91,7 @@ static void injectAccountBypass(void) {
         if (appDelegate) {
             @try {
                 [appDelegate setValue:@(kMaxAccounts) forKey:@"maximumNumberOfAccounts"];
-            } @catch (...) {}
+            } @catch (NSException *e) {}
         }
 
         customLog2(@"[Lead] AccountLimit: bypass injected (max=%d)", kMaxAccounts);
