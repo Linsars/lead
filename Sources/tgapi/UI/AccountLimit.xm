@@ -1,71 +1,107 @@
+// Account limit bypass — three layers of defense
+// Layer 1: KVC intercept (catch setMaximumNumberOfAccounts:)
+// Layer 2: MTProto config response intercept 
+// Layer 3: UI-level override
+
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import "../Constants.h"
 #import "../Logger/Logger.h"
-#import "Headers.h"
 
-// 类型定义
-typedef BOOL (*respondsToSelectorFunc)(id, SEL, SEL);
-typedef void (*setValueForKeyFunc)(id, SEL, id, NSString *);
+// The new limit
+#define kMaxAccounts 100
 
-static respondsToSelectorFunc orig_respondsToSelector = NULL;
-static setValueForKeyFunc orig_setValue_forKey = NULL;
+#pragma mark - Layer 1: Global KVC intercept
 
-#pragma mark - 主 hook
+%hook NSObject
 
-%hook _TtC12TelegramCore7Account
-
-- (void)updateLimitsConfigurationFromConfig:(id)limitsConfig {
+// Intercept any setValue:forKey: that touches maximumNumberOfAccounts
+- (void)setValue:(id)value forKey:(NSString *)key {
+    if ([key isEqualToString:@"maximumNumberOfAccounts"]) {
+        value = @(kMaxAccounts);
+        customLog2(@"[Lead] AccountLimit: intercept setValue:forKey: maximumNumberOfAccounts -> %d", kMaxAccounts);
+    }
     %orig;
+}
+
+// Also intercept setValue:forKeyPath:
+- (void)setValue:(id)value forKeyPath:(NSString *)keyPath {
+    if ([keyPath isEqualToString:@"maximumNumberOfAccounts"] ||
+        [keyPath hasSuffix:@".maximumNumberOfAccounts"]) {
+        value = @(kMaxAccounts);
+        customLog2(@"[Lead] AccountLimit: intercept setValue:forKeyPath: %@ -> %d", keyPath, kMaxAccounts);
+    }
+    %orig;
+}
+
+%end
+
+#pragma mark - Layer 2: MTProto config hook
+
+%hook MTDiscoverDatacenterAddressAction
+
+// Called when MTProto fetches datacenter config
+- (void)getConfigSuccess:(id)config {
+    customLog2(@"[Lead] AccountLimit: getConfigSuccess: %@", config);
+    %orig;
+    // The config object might have limits — try KVC on it
     @try {
-        [limitsConfig performSelector:@selector(setMaximumNumberOfAccounts:) withObject:@(INT_MAX)];
-    } @catch(NSException *e) {
-        NSLog(@"[Lead] AccountLimit KVC failed: %@", e);
+        id limits = [config valueForKey:@"limitsConfiguration"];
+        if (limits) {
+            [limits setValue:@(kMaxAccounts) forKey:@"maximumNumberOfAccounts"];
+            customLog2(@"[Lead] AccountLimit: patched limitsConfiguration.maximumNumberOfAccounts");
+        }
+    } @catch (NSException *e) {
+        // Config isn't the app-level config, ignore
     }
 }
 
 %end
 
-#pragma mark - 运行时后备方案 (当上面的 hook 不起作用时)
+#pragma mark - Layer 3: UI-level bypass via runtime
 
-static BOOL replaced_respondsToSelector(id self, SEL _cmd, SEL selector) {
-    if (selector == @selector(setMaximumNumberOfAccounts:)) return YES;
-    return orig_respondsToSelector(self, _cmd, selector);
+%hook _TtC10TelegramUI18ChatControllerImpl
+
+// Fire when any chat view appears — we use this to inject our bypass
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    // Inject account limit bypass into the running app
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [self injectAccountBypass];
+    });
 }
 
-static void replaced_setValue_forKey(id self, SEL _cmd, id value, NSString *key) {
-    if ([key isEqualToString:@"maximumNumberOfAccounts"]) {
-        if ([value respondsToSelector:@selector(intValue)]) {
-            value = @(INT_MAX);
+%end
+
+#pragma mark - C helper functions
+
+static void injectAccountBypass(void) {
+    @autoreleasepool {
+        // Try via UserDefaults (Telegram might check this)
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        [defaults setInteger:kMaxAccounts forKey:@"maximumNumberOfAccounts"];
+        [defaults setInteger:kMaxAccounts forKey:@"TG_maximumNumberOfAccounts"];
+        [defaults setBool:YES forKey:@"kAccountLimitBypass"];
+        [defaults synchronize];
+
+        // Try patching the app delegate's account manager
+        id appDelegate = [UIApplication sharedApplication].delegate;
+        if (appDelegate) {
+            @try {
+                [appDelegate setValue:@(kMaxAccounts) forKey:@"maximumNumberOfAccounts"];
+            } @catch (...) {}
         }
+
+        customLog2(@"[Lead] AccountLimit: bypass injected (max=%d)", kMaxAccounts);
     }
-    orig_setValue_forKey(self, _cmd, value, key);
 }
+
+#pragma mark - Constructor
 
 __attribute__((constructor)) static void init() {
     @autoreleasepool {
-        // 1. 尝试 hook NSObject respondsToSelector — 让 setMaximumNumberOfAccounts: 返回 YES
-        Method rts = class_getInstanceMethod([NSObject class], @selector(respondsToSelector:));
-        if (rts) {
-            IMP orig = method_getImplementation(rts);
-            orig_respondsToSelector = (respondsToSelectorFunc)orig;
-            method_setImplementation(rts, (IMP)replaced_respondsToSelector);
-            NSLog(@"[Lead] AccountLimit: patched respondsToSelector");
-        }
-        
-        // 2. 拦截 setValue:forKey: 来桥接 Swift struct 的写操作
-        Method svfk = class_getInstanceMethod([NSObject class], @selector(setValue:forKey:));
-        if (svfk) {
-            IMP orig = method_getImplementation(svfk);
-            orig_setValue_forKey = (setValueForKeyFunc)orig;
-            method_setImplementation(svfk, (IMP)replaced_setValue_forKey);
-            NSLog(@"[Lead] AccountLimit: patched setValue:forKey:");
-        }
-        
-        // 3. TeleUtil 也提供了一些限制检查
-        NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
-        [d setBool:YES forKey:@"kAccountLimitBypass"];
-        [d synchronize];
+        customLog2(@"[Lead] AccountLimit: loaded");
     }
 }
