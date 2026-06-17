@@ -1,0 +1,66 @@
+name: class-dump
+on:
+  release:
+    types: [published]
+
+jobs:
+  analyze:
+    if: github.event.release.prerelease
+    runs-on: macos-15
+    steps:
+      - name: Download dylib
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download ${{ github.event.release.tag_name }} \
+            --repo ${{ github.repository }} \
+            --pattern 'Lead_1.4.2*' -O /tmp/Lead.dylib
+          echo "Downloaded: $(ls -lh /tmp/Lead.dylib | awk '{print $5}')"
+
+      - name: Mach-O analysis with native tools
+        run: |
+          mkdir -p /tmp/report
+
+          # 1. Extract ObjC class list (nm)
+          echo "=== ObjC Classes ===" > /tmp/report/classes.txt
+          nm -gU /tmp/Lead.dylib 2>/dev/null | grep -E 'OBJC_CLASS' | sed 's/.*_OBJC_CLASS_\$_//' | sort -u >> /tmp/report/classes.txt
+          echo "" >> /tmp/report/classes.txt
+
+          # 2. Extract ObjC ivars
+          echo "=== ObjC IVars ===" >> /tmp/report/classes.txt
+          nm -gU /tmp/Lead.dylib 2>/dev/null | grep 'OBJC_IVAR' | sed 's/.*_OBJC_IVAR_\$_//' | sort -u >> /tmp/report/classes.txt
+
+          # 3. List all ObjC method names (otool)
+          echo "=== ObjC Method Selectors ===" > /tmp/report/selectors.txt
+          otool -ov /tmp/Lead.dylib 2>/dev/null | grep -E 'name.*0x' | head -200 >> /tmp/report/selectors.txt
+          echo "" >> /tmp/report/selectors.txt
+          echo "=== All ObjC protocol/class declarations ===" >> /tmp/report/selectors.txt
+          otool -ov /tmp/Lead.dylib 2>/dev/null | grep -E '(class|protocol) name' | head -100 >> /tmp/report/selectors.txt
+
+          # 4. Swift demangling
+          echo "=== Swift symbols (demangled) ===" > /tmp/report/swift.txt
+          nm -gU /tmp/Lead.dylib 2>/dev/null | grep 'TtC\|$s' | head -50 | while read line; do
+            sym=$(echo "$line" | awk '{print $NF}')
+            demangled=$(echo "$sym" | xcrun swift-demangle 2>/dev/null || echo "$sym")
+            echo "$demangled" >> /tmp/report/swift.txt
+          done
+
+          # 5. Feature keys from strings
+          echo "=== Feature key strings ===" > /tmp/report/features.txt
+          strings /tmp/Lead.dylib | grep -E '^k[A-Z][a-zA-Z]+' | sort -u >> /tmp/report/features.txt
+          echo "" >> /tmp/report/features.txt
+          echo "=== Selectors relevant to UI features ===" >> /tmp/report/features.txt
+          strings /tmp/Lead.dylib | grep -E '(updateWithPeer|isVoice|isVideoNote|isCopyProtected|copyProtect|canTranslate|isPremium|consumeMessage|setMaximum|hidePhone|noForwards|toggleRecording|SharedCallAudio|viewDidAppear|layoutSubviews)' | sort -u >> /tmp/report/features.txt
+
+      - name: Show results
+        run: |
+          for f in /tmp/report/*.txt; do
+            echo ""
+            echo "=== $(basename $f .txt) ==="
+            head -30 "$f"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lead-analysis
+          path: /tmp/report/

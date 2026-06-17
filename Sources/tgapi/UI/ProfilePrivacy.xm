@@ -1,28 +1,64 @@
 #import <UIKit/UIKit.h>
-#import "../Constants.h"
-%hook UIViewController
+#import <objc/runtime.h>
 
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    // Show Profile ID on PeerInfoScreen
-    Class peerInfoClass = NSClassFromString(@"_TtC14PeerInfoScreen18PeerInfoScreenImpl");
-    if (peerInfoClass && [self isKindOfClass:peerInfoClass]) {
-        // Found the profile screen, delay to let view hierarchy settle
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self performSelector:@selector(showProfileIdIfNeeded)];
-        });
+// Hook UIView.layoutSubviews 而不是 PeerInfoHeaderNode（可能没注册到 ObjC 运行时）
+
+@interface LeadProfileID : NSObject
++ (void)_tryAddIDTo:(UIView *)view;
+@end
+
+static void (*orig_layoutSubviews)(id, SEL);
+static void replaced_layoutSubviews(id self, SEL _cmd) {
+    orig_layoutSubviews(self, _cmd);
+    [LeadProfileID _tryAddIDTo:self];
+}
+
+%ctor {
+    @autoreleasepool {
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"kShowProfileId"];
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"kHidePhoneInSettings"];
+        
+        Method m = class_getInstanceMethod([UIView class], @selector(layoutSubviews));
+        if (m) {
+            orig_layoutSubviews = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)replaced_layoutSubviews);
+        }
     }
 }
 
-%new
-- (void)showProfileIdIfNeeded {
-    // Get the user/peer ID from the view controller's title or context
-    // Add it as a subtitle
-    NSString *title = self.title;
-    if (title.length > 0) {
-        // The title is the user/group name
-        // Get the peer ID - look for a label or data in the view
-    }
+@implementation LeadProfileID
++ (void)_tryAddIDTo:(UIView *)view {
+    static Class targetCls = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        targetCls = NSClassFromString(@"PeerInfoHeaderNode");
+        if (!targetCls) targetCls = NSClassFromString(@"_TtC14PeerInfoScreen18PeerInfoHeaderNode");
+        if (!targetCls) targetCls = NSClassFromString(@"_TtC10PeerInfoUI18PeerInfoHeaderNode");
+    });
+    
+    if (!targetCls) return;
+    if (![view isKindOfClass:targetCls]) return;
+    
+    static int kTag = 42069;
+    if ([view viewWithTag:kTag]) return;
+    
+    @try {
+        id peer = nil;
+        @try { peer = [view valueForKey:@"peer"]; } @catch(id e) {}
+        if (!peer) @try { peer = [view valueForKey:@"_peer"]; } @catch(id e) {}
+        NSNumber *pid = nil;
+        if (peer) @try { pid = [peer valueForKey:@"_id"]; } @catch(id e) {}
+        if (!pid) @try { pid = [peer valueForKey:@"id"]; } @catch(id e) {}
+        if (!pid) return;
+        UILabel *label = [[UILabel alloc] init];
+        label.tag = kTag;
+        label.text = [NSString stringWithFormat:@"ID: %lld", [pid longLongValue]];
+        label.font = [UIFont systemFontOfSize:12];
+        label.textColor = UIColor.secondaryLabelColor;
+        [label sizeToFit];
+        label.frame = CGRectMake(16, CGRectGetMaxY(view.bounds) - 30,
+                                 label.frame.size.width + 8, 20);
+        [view addSubview:label];
+    } @catch(id e) {}
 }
-
-%end
+@end
