@@ -8,7 +8,7 @@
     dispatch_once(&once, ^{
         Class callController = NSClassFromString(@"_TtC15TelegramCallsUI20CallControllerNodeV2");
         if (callController && [self isKindOfClass:callController]) {
-            [self addRecordingButton];
+            [self performSelector:@selector(addRecordingButton)];
         }
     });
 }
