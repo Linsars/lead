@@ -12,6 +12,9 @@
 // The new limit
 #define kMaxAccounts 100
 
+#pragma mark - Forward declarations
+static void injectAccountBypass(void);
+
 #pragma mark - Layer 1: Global KVC intercept
 
 %hook NSObject
