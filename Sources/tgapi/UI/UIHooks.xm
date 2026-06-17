@@ -4,6 +4,11 @@
 
 #import "../Logger/Logger.h"
 #import <objc/runtime.h>
+// Forward interface declaration (TeleFrame headers not available)
+@interface TGLocalization : NSObject
+- (id)get:(id)key;
+@end
+
 #import <UIKit/UIKit.h>
 #import "../Constants.h"
 
@@ -159,7 +164,7 @@ void showUI(void) {
     %orig;
     if (!_leadGestureAttached) {
         TGLocalization *loc = getActiveTGLocalization();
-        NSString *label = self.accessibilityLabel;
+        NSString *label = [self performSelector:@selector(accessibilityLabel)];
         if (label.length > 0 && loc) {
             NSString *supportStr = [loc get:@"Settings.Support"];
             if (supportStr.length > 0 && ![supportStr isEqualToString:@"Settings.Support"] &&
@@ -194,7 +199,7 @@ void showUI(void) {
             NSSet *callLabels = [NSSet setWithArray:@[@"call", @"позвонить", @"звонок"]];
             NSSet *videoLabels = [NSSet setWithArray:@[@"video", @"видео", @"video call", @"видеозвонок"]];
             BOOL isCall = [callLabels containsObject:lower];
-            BOOL isVideo = [videoLabels containsObject:lower];
+            BOOL isVideo __unused = [videoLabels containsObject:lower];
             if (isCall) {
                 // Cancel original send — we'll confirm first
                 return;
@@ -218,7 +223,7 @@ void showUI(void) {
 %hook _TtCC20StoryContainerScreen30StoryItemSetContainerComponent4View
 - (void)didMoveToWindow {
     %orig;
-    if (self.window) {
+    if ([self performSelector:@selector(window)]) {
         customLog2(@"[Lead] story view presented");
     }
 }
