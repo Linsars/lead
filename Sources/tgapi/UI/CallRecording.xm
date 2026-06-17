@@ -1,3 +1,5 @@
+#import <UIKit/UIKit.h>
+#import "../Constants.h"
 %hook UIViewController
 
 - (void)viewDidAppear:(BOOL)animated {
