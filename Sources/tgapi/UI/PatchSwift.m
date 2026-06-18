@@ -22,6 +22,8 @@ static void patchLog(NSString *fmt, ...) {
     NSLog(@"%@", msg);
     [msg writeToFile:@"/tmp/lead_patch.log" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
 }
+
+static void patchSwiftInt64(void *addr, int64_t newValue) {
     // The page might be read-only (__DATA_CONST), make it writable first
     long pageSize = sysconf(_SC_PAGESIZE);
     void *pageStart = (void *)((uintptr_t)addr & ~(pageSize - 1));
