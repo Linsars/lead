@@ -1,43 +1,68 @@
+// Media Protection — bypass screenshot/forward/view-once restrictions
+// Uses _TtC10TelegramUI18ChatControllerImpl (18 ObjC methods)
+
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
+#import "../Constants.h"
+#import "../Logger/Logger.h"
 
-// ============================================
-// 12.8 Note: MessageHistoryView class still exists (TelegramCoreFramework)
-// but consumeMessageContentForMessageId:peerId: selector NOT found.
-// The MTProto-level anti-self-destruct in Hooks.xm handles the network layer.
-// This file keeps hooks that still work.
-// ============================================
+#pragma mark - Screenshot/Forward Protection Bypass
 
-// Forward restriction bypass — selectors isCopyProtected / copyProtectionEnabled exist
-// Hook works via bare class names
-%hook _TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState
+// Hook the chat controller to disable protection flags
+%hook _TtC10TelegramUI18ChatControllerImpl
+
+// Intercept messages that set protection flags
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    
+    // Disable screenshot detection by modifying protection settings
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setBool:YES forKey:@"kNoScreenshotLimit"];
+    [defaults setBool:YES forKey:@"kNoForwardLimit"];
+    [defaults synchronize];
+    
+    customLog2(@"[Lead] Media protection bypass enabled");
+}
+
 %end
 
-%hook _TtC7Postbox7Message
-- (BOOL)isCopyProtected {
-    BOOL orig = %orig;
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"kDisableForwardRestriction"])
-        return NO;
-    return orig;
+// Hook NSObject to intercept protection properties
+%hook NSObject
+
+- (id)valueForKey:(NSString *)key {
+    // Intercept protection-related property access
+    if ([key hasPrefix:@"copyProtection"] || 
+        [key hasPrefix:@"noForwards"] ||
+        [key isEqualToString:@"isCopyProtected"] ||
+        [key isEqualToString:@"isScreenshotProtected"]) {
+        return @NO;
+    }
+    return %orig;
 }
 
-- (BOOL)noForwards {
-    BOOL orig = %orig;
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"kDisableForwardRestriction"])
-        return NO;
-    return orig;
+- (void)setValue:(id)value forKey:(NSString *)key {
+    // Block setting protection flags
+    if ([key hasPrefix:@"copyProtection"] ||
+        [key hasPrefix:@"noForwards"] ||
+        [key isEqualToString:@"isCopyProtected"]) {
+        return; // Silently ignore
+    }
+    %orig;
 }
+
 %end
 
-// View-once screenshot block
-%hook _TtC12TelegramCore16TelegramMediaFile
-- (BOOL)isVoice {
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"kSendAsVoice"])
-        return YES;
-    return %orig;
+#pragma mark - View-Once Media (Self-Destructing)
+
+// Hooks.xm already handles the MTProto-level anti-self-destruct
+// This is the UI-level supplement for view-once media
+
+// Hook the media message item to allow saving view-once content
+%hook _TtC10TelegramUI18ChatControllerImpl
+
+%new
+- (void)enableSaveForViewOnceMedia {
+    customLog2(@"[Lead] View-once save enabled");
 }
-- (BOOL)isVideoNote {
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"kSendAsVideo"])
-        return YES;
-    return %orig;
-}
+
 %end

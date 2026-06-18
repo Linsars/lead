@@ -1,17 +1,57 @@
+// Premium Bypass + Translate Unlock
+// Uses _TtC10TelegramCore7Network and NSObject runtime hooks
+
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
+#import "../Constants.h"
+#import "../Logger/Logger.h"
 
-// ============================================
-// 12.8 BREAKING: TranslationFeatureManager / TranslationAccessCoordinator
-// classes DELETED. Telegram now uses system Translation.framework.
-// These hooks are stubs — they won't crash but also won't work.
-// TODO: Bypass Translation.framework region check (separate project)
-// ============================================
+// -- Layer 1: Network class premium spoof --
+%hook _TtC10TelegramCore7Network
 
-// Stub hooks — classes likely don't exist, but Logos handles that gracefully
-%hook _TtC12TelegramCore25TranslationFeatureManager
-- (BOOL)canTranslate { return %orig; }
+%new
+- (BOOL)isPremium { return YES; }
+
+%new  
+- (BOOL)isPremiumUser { return YES; }
+
 %end
 
-%hook _TtC12TelegramCore31TranslationAccessCoordinator
-- (BOOL)isPremiumAllowed { return %orig; }
+// -- Layer 2: Global NSObject premium spoof --
+%hook NSObject
+
+%new
+- (BOOL)isPremium { return YES; }
+- (BOOL)isPremiumUser { return YES; }
+
+- (id)valueForKey:(NSString *)key {
+    if ([key isEqualToString:@"isPremium"] || [key isEqualToString:@"isPremiumUser"])
+        return @YES;
+    return %orig;
+}
+
+- (void)setValue:(id)value forKey:(NSString *)key {
+    if ([key isEqualToString:@"isPremium"] || [key isEqualToString:@"isPremiumUser"])
+        value = @YES;
+    %orig;
+}
+
+%end
+
+// -- Layer 3: Translate Unlock --
+// displayAutoTranslateLocked is premium-gated
+// Hook SettingsUI to unlock translation
+
+%hook _TtC10SettingsUI22TranslateSettingsController
+
+%new
+- (BOOL)displayAutoTranslateLocked { return NO; }
+
+%end
+
+%hook _TtC11TranslateUI18TranslateController
+
+%new  
+- (BOOL)displayAutoTranslateLocked { return NO; }
+
 %end

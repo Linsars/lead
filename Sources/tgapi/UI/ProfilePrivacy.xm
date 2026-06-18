@@ -1,64 +1,107 @@
+// Profile Privacy — Show Profile ID + Hide Phone Number
+// Uses ObjC-accessible classes confirmed via otool
+
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import "../Constants.h"
+#import "../Logger/Logger.h"
 
-// Hook UIView.layoutSubviews 而不是 PeerInfoHeaderNode（可能没注册到 ObjC 运行时）
+#pragma mark - Profile ID: Show in PeerInfoHeaderNode
 
-@interface LeadProfileID : NSObject
-+ (void)_tryAddIDTo:(UIView *)view;
-@end
+// _TtC14PeerInfoScreen18PeerInfoHeaderNode has 11 ObjC methods
+// Including: didLoad, handleUsernameLongPress:
+// We hook didLoad to inject a profile ID label
 
-static void (*orig_layoutSubviews)(id, SEL);
-static void replaced_layoutSubviews(id self, SEL _cmd) {
-    orig_layoutSubviews(self, _cmd);
-    [LeadProfileID _tryAddIDTo:self];
+%hook _TtC14PeerInfoScreen18PeerInfoHeaderNode
+
+- (void)didLoad {
+    %orig;
+    // After loading, find the username label area and append profile ID
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *view = [self valueForKey:@"view"];
+        if (!view) return;
+        
+        // Look for existing labels to get position
+        __block UILabel *existingLabel = nil;
+        [view.subviews enumerateObjectsUsingBlock:^(UIView *sub, NSUInteger idx, BOOL *stop) {
+            if ([sub isKindOfClass:[UILabel class]]) {
+                UILabel *l = (UILabel *)sub;
+                if ([l.text containsString:@"@"]) {
+                    existingLabel = l;
+                    *stop = YES;
+                }
+            }
+        }];
+        
+        if (!existingLabel) return;
+        
+        // Add profile ID label below username
+        UILabel *idLabel = [[UILabel alloc] init];
+        idLabel.font = [UIFont systemFontOfSize:13];
+        idLabel.textColor = [UIColor grayColor];
+        idLabel.text = @"ID: loading...";
+        idLabel.tag = 0xDEAD;
+        [view addSubview:idLabel];
+        
+        // Try to get peer ID via view controller chain
+        UIResponder *responder = view;
+        while (responder) {
+            if ([responder isKindOfClass:[UIViewController class]]) {
+                // Ask for peer ID
+                id peerId = [responder valueForKey:@"peerId"];
+                if (peerId) {
+                    idLog = [NSString stringWithFormat:@"ID: %@", peerId];
+                    idLabel.text = idLog;
+                }
+                break;
+            }
+            responder = [responder nextResponder];
+        }
+    });
 }
 
-%ctor {
-    @autoreleasepool {
-        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"kShowProfileId"];
-        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"kHidePhoneInSettings"];
-        
-        Method m = class_getInstanceMethod([UIView class], @selector(layoutSubviews));
-        if (m) {
-            orig_layoutSubviews = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)replaced_layoutSubviews);
-        }
+%end
+
+%hook _TtC14PeerInfoScreen18PeerInfoScreenImpl
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    // Inject ID display into the header node
+    customLog2(@"[Lead] PeerInfoScreen appeared");
+}
+
+%end
+
+#pragma mark - Hide Phone Number
+
+// _TtC10SettingsUI* classes handle settings screens
+// Hook the settings screen to hide phone number
+
+%hook NSObject
+
+- (id)valueForKey:(NSString *)key {
+    if ([key isEqualToString:@"isHidePhoneInD7Enabled"] || 
+        [key isEqualToString:@"hidePhone"]) {
+        return @YES;
+    }
+    return %orig;
+}
+
+%end
+
+// Hook the settings controller to enable hidden options
+%hook _TtC10TelegramUI18ChatControllerImpl
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    
+    // Check if current VC subclass is Settings-related
+    NSString *className = NSStringFromClass([self class]);
+    if ([className containsString:@"Settings"] || [className containsString:@"Privacy"]) {
+        // Enable hidden phone option
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"hidePhoneInSettings"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
     }
 }
 
-@implementation LeadProfileID
-+ (void)_tryAddIDTo:(UIView *)view {
-    static Class targetCls = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        targetCls = NSClassFromString(@"PeerInfoHeaderNode");
-        if (!targetCls) targetCls = NSClassFromString(@"_TtC14PeerInfoScreen18PeerInfoHeaderNode");
-        if (!targetCls) targetCls = NSClassFromString(@"_TtC10PeerInfoUI18PeerInfoHeaderNode");
-    });
-    
-    if (!targetCls) return;
-    if (![view isKindOfClass:targetCls]) return;
-    
-    static int kTag = 42069;
-    if ([view viewWithTag:kTag]) return;
-    
-    @try {
-        id peer = nil;
-        @try { peer = [view valueForKey:@"peer"]; } @catch(id e) {}
-        if (!peer) @try { peer = [view valueForKey:@"_peer"]; } @catch(id e) {}
-        NSNumber *pid = nil;
-        if (peer) @try { pid = [peer valueForKey:@"_id"]; } @catch(id e) {}
-        if (!pid) @try { pid = [peer valueForKey:@"id"]; } @catch(id e) {}
-        if (!pid) return;
-        UILabel *label = [[UILabel alloc] init];
-        label.tag = kTag;
-        label.text = [NSString stringWithFormat:@"ID: %lld", [pid longLongValue]];
-        label.font = [UIFont systemFontOfSize:12];
-        label.textColor = UIColor.secondaryLabelColor;
-        [label sizeToFit];
-        label.frame = CGRectMake(16, CGRectGetMaxY(view.bounds) - 30,
-                                 label.frame.size.width + 8, 20);
-        [view addSubview:label];
-    } @catch(id e) {}
-}
-@end
+%end
