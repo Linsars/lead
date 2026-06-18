@@ -1,72 +1,68 @@
 name: Find Account Limit
 on: [workflow_dispatch]
-
 jobs:
   analyze:
-    runs-on: macos-15
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download framework
+      - name: Get framework + analyze
         run: |
-          gh release download ipa-telegram-12.8 --repo ${{ github.repository }} --pattern '*.ipa' --dir /tmp
-          test -f /tmp/Telegram.ipa && echo "OK" || (echo "FALLBACK: direct URL" && curl -sL -o /tmp/Telegram.ipa "https://github.com/${{ github.repository }}/releases/download/ipa-telegram-12.8/Telegram.ipa")
-          ls -lh /tmp/Telegram.ipa
-
-      - name: Extract + analyze
-        run: |
-          unzip -q /tmp/Telegram.ipa -d /tmp/ipa/
-          FW=$(find /tmp/ipa -name "TelegramUIFramework.framework" -type d | head -1)
-          cp "$FW/TelegramUIFramework" /tmp/TUIF
-          ls -lh /tmp/TUIF
+          # Download IPA using curl
+          curl -sL -o /tmp/Telegram.ipa \
+            "https://github.com/${{ github.repository }}/releases/download/ipa-telegram-12.8/Telegram.ipa"
+          echo "IPA size: $(ls -lh /tmp/Telegram.ipa | awk '{print $5}')"
           
-          pip3 install capstone -q
-          python3 << 'PYANAL'
+          # Extract
+          unzip -q /tmp/Telegram.ipa -d /tmp/ipa/
+          cp "$(find /tmp/ipa -name "TelegramUIFramework.framework" -type d | head -1)/TelegramUIFramework" /tmp/tf
+          
+          # Python analysis with built-in modules (no capstone)
+          python3 -c "
 import struct
-with open('/tmp/TUIF','rb') as f:
+with open('/tmp/tf','rb') as f:
     d=f.read()
 ncmds=struct.unpack('<I',d[16:20])[0]
 pos=32
-txt_off=txt_sz=sym_off=str_off=n_sym=0
+to=ts=so=st=ns=0
 for _ in range(ncmds):
     ct,cs=struct.unpack('<II',d[pos:pos+8])
     if ct==0x2:
-        sym_off,str_off,n_sym=struct.unpack('<III',d[pos+8:pos+20])
-    if ct==0x19 and d[pos+8:pos+24].split(b'\x00')[0].decode()=='__TEXT':
-        ns=struct.unpack('<I',d[pos+72:pos+76])[0]
+        so,st,ns=struct.unpack('<III',d[pos+8:pos+20])
+    if ct==0x19 and d[pos+8:pos+24].split(b'\\x00')[0].decode()=='__TEXT':
+        nsects=struct.unpack('<I',d[pos+72:pos+76])[0]
         sec=pos+80
-        for _ in range(ns):
-            sn=d[sec:sec+16].split(b'\x00')[0].decode()
+        for _ in range(nsects):
+            sn=d[sec:sec+16].split(b'\\x00')[0].decode()
             if sn=='__text':
-                txt_off,txt_sz=struct.unpack('<QQ',d[sec+32:sec+48])
+                to,ts=struct.unpack('<QQ',d[sec+32:sec+48])
             sec+=80
     pos+=cs
-print(f'__TEXT: 0x{txt_off:x} sz={txt_sz}')
-# Symbol scan
-print(f'% SYMBOLS % scanning {n_sym} entries')
-for s in range(n_sym):
-    nl=sym_off+s*16
-    n=str_off+struct.unpack('<I',d[nl:nl+4])[0]
-    if n+4>=len(d): continue
-    name=d[n:].split(b'\x00')[0].decode(errors='replace')
-    if 'NumberOf' in name:
-        val=struct.unpack('<Q',d[nl+8:nl+16])[0]
-        print(f'% SYM {name}: 0x{val:x}')
-# Capstone scan
-from capstone import *
-text=d[txt_off:txt_off+min(txt_sz,1048576)]
-md=Cs(CS_ARCH_ARM64,CS_MODE_ARM)
-md.skipdata=True
+print(f'__text: {to:x} sz={ts}')
+print(f'syms: {ns}')
+for s in range(ns):
+    nl=so+s*16
+    n_strx=struct.unpack('<I',d[nl:nl+4])[0]
+    n_val=struct.unpack('<Q',d[nl+8:nl+16])[0]
+    nm=d[st+n_strx:].split(b'\\x00')[0].decode(errors='replace')
+    low=nm.lower()
+    if 'numberofaccounts' in low and n_val>0:
+        print(f'%%% FOUND %%% {nm} -> 0x{n_val:x}')
+# Also search for CMP #3 patterns in binary
+text=d[to:to+min(ts,100*1024*1024)]
 count=0
-for insn in md.disasm(text,txt_off):
-    if insn.mnemonic=='cmp' and insn.operands[1].type==1 and insn.operands[1].value.imm in(3,4):
-        print(f'% CMP 0x{insn.address:x}: cmp {insn.op_str}')
+for i in range(0,len(text)-3,4):
+    if text[i+3]==0xf1 and text[i+2]==0x00 and 0x0c<=text[i+1]<=0x0f:
+        rn=text[i]>>5&7|(text[i+1]&3)<<3
         count+=1
-        if count>20: break
-PYANAL
-
-      - name: Show output
-        run: |
-          echo "=== Full Output ==="
-          grep -E '^% ' /tmp/analysis_output.txt 2>/dev/null || true
-          find /tmp -name "analysis_output*" -exec cat {} \; 2>/dev/null || echo "no output file"
+        if count<=30:
+            ctx=d[to+max(0,i-16):to+i+4]
+            print(f'CMP3: 0x{to+i:x} X{rn}')
+    if text[i+3]==0x71 and text[i+2]==0x00 and 0x0c<=text[i+1]<=0x0f:
+        count+=1
+        if count<=30:
+            print(f'CMP3: 0x{to+i:x} Wn (32bit)')
+    if text[i+3]==0xf1 and text[i+2]==0x00 and 0x10<=text[i+1]<=0x13:
+        print(f'CMP4: 0x{to+i:x}')
+print(f'Total CMP #3 in __text: {count}')
+print('%%% DONE %%%')
+"
