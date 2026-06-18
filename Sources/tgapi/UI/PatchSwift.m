@@ -41,8 +41,8 @@ static void patchMaximumNumberOfAccounts(void) {
         uint32_t ncmds = hdr->ncmds;
         uint64_t pos = (uint64_t)hdr + sizeof(struct mach_header_64);
         
-        uint64_t symoff = 0, stroff = 0, nsyms = 0, strsize = 0;
-        uint64_t linkedit_off = 0, linkedit_size = 0, linkedit_fileoff = 0;
+        uint64_t symoff = 0, stroff = 0, nsyms = 0;
+        uint64_t linkedit_off = 0, linkedit_fileoff = 0;
         
         for (uint32_t j = 0; j < ncmds; j++) {
             uint32_t *cmd = (uint32_t *)pos;
@@ -74,7 +74,6 @@ static void patchMaximumNumberOfAccounts(void) {
         
         // Calculate the actual addresses of symtab and string table
         // slide adjusts the vmaddr to actual address
-        uint8_t *file_base = (uint8_t *)hdr;
         
         // The string table is at: file_base (where hdr is) + stroff - linkedit_fileoff + linkedit_off - slide(?)...
         // Actually, for a loaded dylib, the file content starts at hdr address
