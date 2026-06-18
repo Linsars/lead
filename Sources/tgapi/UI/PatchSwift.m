@@ -33,25 +33,25 @@ static void patchMaximumNumberOfAccounts(void) {
         const char *name = _dyld_get_image_name(i);
         if (!name || !strstr(name, "TelegramUIFramework")) continue;
         
-        const struct mach_header *header = _dyld_get_image_header(i);
+        const struct mach_header_64 *header = _dyld_get_image_header(i);
         if (!header) continue;
         
         intptr_t slide = _dyld_get_image_vmaddr_slide(i);
         
         // 2. Get section pointers
         unsigned long reflstr_size, fieldmd_size;
-        uint8_t *reflstr = getsectiondata(header, "__TEXT", "__swift5_reflstr", &reflstr_size);
-        uint8_t *fieldmd = getsectiondata(header, "__TEXT", "__swift5_fieldmd", &fieldmd_size);
+        uint8_t *reflstr = getsectiondata((const struct mach_header *)header, "__TEXT", "__swift5_reflstr", &reflstr_size);
+        uint8_t *fieldmd = getsectiondata((const struct mach_header *)header, "__TEXT", "__swift5_fieldmd", &fieldmd_size);
         
         // 3. Also try __DATA_CONST if __TEXT didn't have the sections
         if (!reflstr || !fieldmd) {
-            reflstr = getsectiondata(header, "__DATA_CONST", "__swift5_reflstr", &reflstr_size);
-            fieldmd = getsectiondata(header, "__DATA_CONST", "__swift5_fieldmd", &fieldmd_size);
+            reflstr = getsectiondata((const struct mach_header *)header, "__DATA_CONST", "__swift5_reflstr", &reflstr_size);
+            fieldmd = getsectiondata((const struct mach_header *)header, "__DATA_CONST", "__swift5_fieldmd", &fieldmd_size);
         }
         // Also try __DATA
         if (!reflstr || !fieldmd) {
-            reflstr = getsectiondata(header, "__DATA", "__swift5_reflstr", &reflstr_size);
-            fieldmd = getsectiondata(header, "__DATA", "__swift5_fieldmd", &fieldmd_size);
+            reflstr = getsectiondata((const struct mach_header *)header, "__DATA", "__swift5_reflstr", &reflstr_size);
+            fieldmd = getsectiondata((const struct mach_header *)header, "__DATA", "__swift5_fieldmd", &fieldmd_size);
         }
         
         if (!reflstr || !fieldmd || reflstr_size < 4 || fieldmd_size < 4) {
