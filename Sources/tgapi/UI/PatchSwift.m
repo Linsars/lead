@@ -14,7 +14,14 @@ static int32_t readRelativeOffset(const uint8_t *base, const uint8_t *ptr) {
     return offset;
 }
 
-static void patchSwiftInt64(void *addr, int64_t newValue) {
+static void patchLog(NSString *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:args];
+    va_end(args);
+    NSLog(@"%@", msg);
+    [msg writeToFile:@"/tmp/lead_patch.log" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+}
     // The page might be read-only (__DATA_CONST), make it writable first
     long pageSize = sysconf(_SC_PAGESIZE);
     void *pageStart = (void *)((uintptr_t)addr & ~(pageSize - 1));
@@ -24,7 +31,7 @@ static void patchSwiftInt64(void *addr, int64_t newValue) {
     memcpy(&oldValue, addr, sizeof(oldValue));
     memcpy(addr, &newValue, sizeof(newValue));
     
-    customLog2(@"[PatchSwift] Patched %p: %lld -> %lld", addr, oldValue, newValue);
+    patchLog(@"[PatchSwift] Patched %p: %lld -> %lld", addr, oldValue, newValue);
 }
 
 static void patchMaximumNumberOfAccounts(void) {
@@ -58,11 +65,11 @@ static void patchMaximumNumberOfAccounts(void) {
         }
         
         if (!reflstr || !fieldmd || reflstr_size < 4 || fieldmd_size < 4) {
-            customLog2(@"[PatchSwift] Swift sections not found in any segment");
+            patchLog(@"[PatchSwift] Swift sections not found in any segment");
             return;
         }
         
-        customLog2(@"[PatchSwift] Found: reflstr=%lu bytes, fieldmd=%lu bytes", reflstr_size, fieldmd_size);
+        patchLog(@"[PatchSwift] Found: reflstr=%lu bytes, fieldmd=%lu bytes", reflstr_size, fieldmd_size);
         
         // 4. Walk the fieldmd section
         // Swift 5.x Field Record (12 bytes each):
@@ -97,7 +104,7 @@ static void patchMaximumNumberOfAccounts(void) {
                     uint32_t storageOff = *(uint32_t *)(ptr + 8);
                     uint8_t *storageAddr = (uint8_t *)header + storageOff + slide;
                     
-                    customLog2(@"[PatchSwift] PATCHED '%s': storage=0x%x addr=%p val=%lld->500",
+                    patchLog(@"[PatchSwift] PATCHED '%s': storage=0x%x addr=%p val=%lld->500",
                               nameStr, storageOff, storageAddr,
                               *(int64_t *)storageAddr);
                     
@@ -109,14 +116,14 @@ static void patchMaximumNumberOfAccounts(void) {
             ptr += 12;
         }
         
-        customLog2(@"[PatchSwift] Done: patched %d fields", patched);
+        patchLog(@"[PatchSwift] Done: patched %d fields", patched);
         return;
     }
 }
 
 __attribute__((constructor)) static void init(void) {
     @autoreleasepool {
-        customLog2(@"[PatchSwift] Loaded, waiting for Telegram...");
+        patchLog(@"[PatchSwift] Loaded, waiting for Telegram...");
         dispatch_async(dispatch_get_main_queue(), ^{
             // Give Telegram time to fully load its frameworks
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
