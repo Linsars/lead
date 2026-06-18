@@ -8,11 +8,6 @@
 #import "../Constants.h"
 #import "../Logger/Logger.h"
 
-static int32_t readRelativeOffset(const uint8_t *base, const uint8_t *ptr) {
-    int32_t offset;
-    memcpy(&offset, ptr, sizeof(offset));
-    return offset;
-}
 
 static void patchLog(NSString *fmt, ...) {
     va_list args;
