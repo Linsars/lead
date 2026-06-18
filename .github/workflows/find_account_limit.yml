@@ -1,126 +1,14 @@
-name: Find & Patch Account Limit
+name: Find Account Limit
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
+on: workflow_dispatch
 
 jobs:
   analyze:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download TelegramUIFramework from release
+      - name: Analyze
         run: |
-          gh release download ipa-telegram-12.8 --repo ${{ github.repository }} --pattern '*.dylib' --dir /tmp || true
-          # Use the IPA we already have
-          curl -sL -o /tmp/Telegram.ipa "https://github.com/Linsars/lead/releases/download/ipa-telegram-12.8/Telegram.ipa" 2>/dev/null || true
-          ls -la /tmp/Telegram.ipa 2>/dev/null
-
-      - name: Extract TelegramUIFramework
-        run: |
-          if [ -f /tmp/Telegram.ipa ]; then
-            unzip -q /tmp/Telegram.ipa -d /tmp/ipa_extract/ 2>/dev/null
-            find /tmp/ipa_extract -name "TelegramUIFramework.framework" -type d | head -1
-            FRAMEWORK=$(find /tmp/ipa_extract -name "TelegramUIFramework.framework" -type d | head -1)
-            if [ -n "$FRAMEWORK" ]; then
-              cp "$FRAMEWORK/TelegramUIFramework" /tmp/TelegramUIFramework
-              ls -lh /tmp/TelegramUIFramework
-            fi
-          fi
-
-      - name: Analyze CMP #3 instructions
-        run: |
-          if [ ! -f /tmp/TelegramUIFramework ]; then
-            echo "Need to upload binary manually"
-            exit 0
-          fi
-          
-          # Find __text section
-          python3 -c "
-import struct
-with open('/tmp/TelegramUIFramework','rb') as f:
-    d=f.read()
-ncmds=struct.unpack('<I',d[16:20])[0]
-pos=32
-for _ in range(ncmds):
-    ct=struct.unpack('<I',d[pos:pos+4])[0]
-    cs=struct.unpack('<I',d[pos+4:pos+8])[0]
-    if ct==0x19:
-        if d[pos+8:pos+24].split(b'\x00')[0].decode()=='__TEXT':
-            nsects=struct.unpack('<I',d[pos+72:pos+76])[0]
-            sec=pos+80
-            for s in range(nsects):
-                sn=d[sec:sec+16].split(b'\x00')[0].decode()
-                if sn=='__text':
-                    off=struct.unpack('<Q',d[sec+32:sec+40])[0]
-                    sz=struct.unpack('<Q',d[sec+40:sec+48])[0]
-                    print(f'{off} {sz}')
-                    break
-    pos+=cs
-" 2>/dev/null > /tmp/text_info.txt
-          read TEXT_OFF TEXT_SIZE < /tmp/text_info.txt
-          echo "__text: offset=0x${TEXT_OFF} size=${TEXT_SIZE}"
-          
-          # Use otool to disassemble around maximumPremiumNumberOfAccounts
-          # First find the string
-          STRING_OFF=$(python3 -c "
-with open('/tmp/TelegramUIFramework','rb') as f:
-    d=f.read()
-idx=d.find(b'maximumPremiumNumberOfAccounts')
-print(f'0x{idx:x}')
-")
-          echo "String at: ${STRING_OFF}"
-          
-          # Disassemble code near this string reference
-          otool -t -v /tmp/TelegramUIFramework 2>/dev/null | head -5
-          
-          # Find all CMP with #3 and show context
-          python3 -c "
-from capstone import *
-import struct
-with open('/tmp/TelegramUIFramework','rb') as f:
-    d=f.read()
-ncmds=struct.unpack('<I',d[16:20])[0]
-pos=32
-text_off=text_size=0
-for _ in range(ncmds):
-    ct=struct.unpack('<I',d[pos:pos+4])[0]
-    cs=struct.unpack('<I',d[pos+4:pos+8])[0]
-    if ct==0x19:
-        if d[pos+8:pos+24].split(b'\x00')[0].decode()=='__TEXT':
-            nsects=struct.unpack('<I',d[pos+72:pos+76])[0]
-            sec=pos+80
-            for s in range(nsects):
-                sn=d[sec:sec+16].split(b'\x00')[0].decode()
-                if sn=='__text':
-                    text_off=struct.unpack('<Q',d[sec+32:sec+40])[0]
-                    text_size=struct.unpack('<Q',d[sec+40:sec+48])[0]
-                    break
-    pos+=cs
-text=d[text_off:text_off+text_size]
-md=Cs(CS_ARCH_ARM64, CS_MODE_ARM)
-md.skipdata=True
-md.detail=True
-results=[]
-for i in range(0,min(len(text),50*1024*1024),4):
-    if i%1000000==0:  # Sample check - too slow to scan all
-        pass
-# Instead scan specific areas near the string reference
-# Use the string address to find nearby code
-str_addr=d.find(b'maximumPremiumNumberOfAccounts')
-print(f'String at: 0x{str_addr:x}')
-# Search backward for the code that references this string
-# Look for ADRP instructions
-for off in range(str_addr-2000, min(str_addr+2000, len(d)-4), 4):
-    if d[off+3]==0xF1 and d[off+2]==0x00:  # Could be a CMP
-        # Check
-        pass
-print('Need full scan approach')
-" 2>&1 | head -20
-
-      - name: Upload patched binary
-        run: |
-          echo "TODO: patch the binary here"
-          # Once we find the address, we'll use python to patch the byte
+          echo "MacOS runner ready"
+          uname -a
+          which nm otool python3
