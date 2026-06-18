@@ -27,7 +27,7 @@
 // Hook viewDidAppear to inject our override
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
-    [self lead_enableAudioUpload];
+    [self performSelector:@selector(lead_enableAudioUpload)];
 }
 
 %end

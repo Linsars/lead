@@ -73,8 +73,8 @@
                 // Ask for peer ID
                 id peerId = [responder valueForKey:@"peerId"];
                 if (peerId) {
-                    idLabel = [NSString stringWithFormat:@"ID: %@", peerId];
-                    idLabel.text = idLabel;
+                    idLabel.text = [NSString stringWithFormat:@"ID: %@", peerId];
+                    
                 }
                 break;
             }
