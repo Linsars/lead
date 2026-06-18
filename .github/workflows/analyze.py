@@ -30,7 +30,8 @@ for s in range(ns):
     nl = so + s * 16
     n_strx = struct.unpack("<I", d[nl:nl+4])[0]
     n_val = struct.unpack("<Q", d[nl+8:nl+16])[0]
-    name = d[st+n_strx:].split(b"\x00")[0].decode(errors="replace")
+    try: name = d[st+n_strx:st+n_strx+256].split(b"\x00")[0].decode(errors="replace")
+    except: name = "DECODE_ERROR"
     low = name.lower()
     if "numberofaccounts" in low:
         print(f"FOUND: {name} -> 0x{n_val:x}", flush=True)
