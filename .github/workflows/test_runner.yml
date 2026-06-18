@@ -1,10 +1,8 @@
-name: Test Runner
+name: Analyze Account Limit
 on: [workflow_dispatch]
 jobs:
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+  analyze:
+    runs-on: ubuntu-latest
     steps:
-      - run: echo "Hello from ${{ runner.os }}" && uname -a
+      - uses: actions/checkout@v4
+      - run: echo "READY" && ls .github/workflows/analyze.py
