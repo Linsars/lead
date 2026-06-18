@@ -6,6 +6,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: echo "START"
-      - name: Download
+      - name: Download IPA
         run: curl -sL -o /tmp/tf.zip "https://github.com/Linsars/lead/releases/download/ipa-telegram-12.8/Telegram.ipa"
-      - run: ls -lh /tmp/tf.zip
+      - name: Extract framework
+        run: |
+          unzip -q /tmp/tf.zip -d /tmp/ipa
+          find /tmp/ipa -name "TelegramUIFramework" -type f | head -1
+          cp "$(find /tmp/ipa -name "TelegramUIFramework" -type f | head -1)" /tmp/tf
+          ls -lh /tmp/tf
+      - name: Symbol search
+        run: python3 ${{ github.workspace }}/.github/workflows/analyze.py
