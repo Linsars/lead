@@ -1,68 +1,20 @@
 name: Find Account Limit
 on: [workflow_dispatch]
+
 jobs:
   analyze:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Get framework + analyze
+      
+      - name: Download & Extract
         run: |
-          # Download IPA using curl
           curl -sL -o /tmp/Telegram.ipa \
             "https://github.com/${{ github.repository }}/releases/download/ipa-telegram-12.8/Telegram.ipa"
-          echo "IPA size: $(ls -lh /tmp/Telegram.ipa | awk '{print $5}')"
-          
-          # Extract
-          unzip -q /tmp/Telegram.ipa -d /tmp/ipa/
-          cp "$(find /tmp/ipa -name "TelegramUIFramework.framework" -type d | head -1)/TelegramUIFramework" /tmp/tf
-          
-          # Python analysis with built-in modules (no capstone)
-          python3 -c "
-import struct
-with open('/tmp/tf','rb') as f:
-    d=f.read()
-ncmds=struct.unpack('<I',d[16:20])[0]
-pos=32
-to=ts=so=st=ns=0
-for _ in range(ncmds):
-    ct,cs=struct.unpack('<II',d[pos:pos+8])
-    if ct==0x2:
-        so,st,ns=struct.unpack('<III',d[pos+8:pos+20])
-    if ct==0x19 and d[pos+8:pos+24].split(b'\\x00')[0].decode()=='__TEXT':
-        nsects=struct.unpack('<I',d[pos+72:pos+76])[0]
-        sec=pos+80
-        for _ in range(nsects):
-            sn=d[sec:sec+16].split(b'\\x00')[0].decode()
-            if sn=='__text':
-                to,ts=struct.unpack('<QQ',d[sec+32:sec+48])
-            sec+=80
-    pos+=cs
-print(f'__text: {to:x} sz={ts}')
-print(f'syms: {ns}')
-for s in range(ns):
-    nl=so+s*16
-    n_strx=struct.unpack('<I',d[nl:nl+4])[0]
-    n_val=struct.unpack('<Q',d[nl+8:nl+16])[0]
-    nm=d[st+n_strx:].split(b'\\x00')[0].decode(errors='replace')
-    low=nm.lower()
-    if 'numberofaccounts' in low and n_val>0:
-        print(f'%%% FOUND %%% {nm} -> 0x{n_val:x}')
-# Also search for CMP #3 patterns in binary
-text=d[to:to+min(ts,100*1024*1024)]
-count=0
-for i in range(0,len(text)-3,4):
-    if text[i+3]==0xf1 and text[i+2]==0x00 and 0x0c<=text[i+1]<=0x0f:
-        rn=text[i]>>5&7|(text[i+1]&3)<<3
-        count+=1
-        if count<=30:
-            ctx=d[to+max(0,i-16):to+i+4]
-            print(f'CMP3: 0x{to+i:x} X{rn}')
-    if text[i+3]==0x71 and text[i+2]==0x00 and 0x0c<=text[i+1]<=0x0f:
-        count+=1
-        if count<=30:
-            print(f'CMP3: 0x{to+i:x} Wn (32bit)')
-    if text[i+3]==0xf1 and text[i+2]==0x00 and 0x10<=text[i+1]<=0x13:
-        print(f'CMP4: 0x{to+i:x}')
-print(f'Total CMP #3 in __text: {count}')
-print('%%% DONE %%%')
-"
+          unzip -q /tmp/Telegram.ipa -d /tmp/ipa
+          find /tmp/ipa -name "TelegramUIFramework" -type f | head -1
+          cp "$(find /tmp/ipa -name "TelegramUIFramework" -type f | head -1)" /tmp/tf
+          ls -lh /tmp/tf
+      
+      - name: Analyze
+        run: python3 ${{ github.workspace }}/.github/workflows/analyze.py
