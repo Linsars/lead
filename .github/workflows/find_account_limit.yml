@@ -5,4 +5,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python3 ${{ github.workspace }}/.github/workflows/analyze.py
+      - name: Pull framework binary
+        run: |
+          python3 -c "
+import os,json
+# Check if we have the binary in a cached location
+paths=['/tmp/tele_ext_clean/telegram_extracted/Payload/Telegram.app/Frameworks/TelegramUIFramework.framework/TelegramUIFramework']
+for p in paths:
+    if os.path.exists(p):
+        os.system('cp '+p+' /tmp/tf')
+        print(f'Copied from {p}')
+        break
+else:
+    print('Need to download IPA...')
+    os.system('curl -sL -o /tmp/Telegram.ipa https://github.com/Linsars/lead/releases/download/ipa-telegram-12.8/Telegram.ipa 2>/dev/null')
+    import zipfile
+    with zipfile.ZipFile('/tmp/Telegram.ipa') as z:
+        for n in z.namelist():
+            if n.endswith('TelegramUIFramework'):
+                with z.open(n) as src, open('/tmp/tf','wb') as dst:
+                    dst.write(src.read())
+                print(f'Extracted from IPA: {n}')
+                break
+"
+      - name: Analyze
+        run: python3 ${{ github.workspace }}/.github/workflows/analyze.py
