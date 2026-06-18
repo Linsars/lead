@@ -14,8 +14,10 @@ static void patchLog(NSString *fmt, ...) {
     va_start(args, fmt);
     NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:args];
     va_end(args);
+    NSString *docPath = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *logPath = [docPath stringByAppendingPathComponent:@"lead_patch.log"];
     NSLog(@"%@", msg);
-    [msg writeToFile:@"/tmp/lead_patch.log" atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+    [msg writeToFile:logPath atomically:YES encoding:NSUTF8StringEncoding error:NULL];
 }
 
 static void patchSwiftInt64(void *addr, int64_t newValue) {
