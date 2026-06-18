@@ -4,6 +4,29 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import "../Constants.h"
+
+// Forward declarations for ObjC-accessible Telegram classes
+@interface _TtC14PeerInfoScreen18PeerInfoHeaderNode : NSObject
+- (void)didLoad;
+- (void)handleUsernameLongPress:(id)gesture;
+- (void)setAccessibilityLabel:(NSString *)label;
+@property (nonatomic, readonly) id view;
+@property (nonatomic, readonly) id subnodes;
+@end
+
+@interface _TtC14PeerInfoScreen18PeerInfoScreenImpl : UIViewController
+- (void)viewDidAppear:(BOOL)animated;
+- (void)viewWillAppear:(BOOL)animated;
+@end
+
+@interface _TtC10TelegramUI18ChatControllerImpl : UIViewController
+- (void)viewDidAppear:(BOOL)animated;
+- (void)viewWillAppear:(BOOL)animated;
+@end
+
+@interface _TtC10SettingsUI21SettingsScreenController : UIViewController
+@end
+
 #import "../Logger/Logger.h"
 
 #pragma mark - Profile ID: Show in PeerInfoHeaderNode
@@ -50,8 +73,8 @@
                 // Ask for peer ID
                 id peerId = [responder valueForKey:@"peerId"];
                 if (peerId) {
-                    idLog = [NSString stringWithFormat:@"ID: %@", peerId];
-                    idLabel.text = idLog;
+                    idLabel = [NSString stringWithFormat:@"ID: %@", peerId];
+                    idLabel.text = idLabel;
                 }
                 break;
             }

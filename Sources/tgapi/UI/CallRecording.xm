@@ -4,6 +4,10 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import "../Constants.h"
+
+@interface _TtC10CallScreen17PrivateCallScreen : UIViewController
+- (void)viewDidAppear:(BOOL)animated;
+@end
 #import "../Logger/Logger.h"
 
 #pragma mark - Call Recording Button

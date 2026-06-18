@@ -4,6 +4,11 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import "../Constants.h"
+
+@interface _TtC10ChatListUI22ChatListControllerImpl : UIViewController
+- (void)viewDidAppear:(BOOL)animated;
+@end
+
 #import "../Logger/Logger.h"
 
 %hook _TtC10ChatListUI22ChatListControllerImpl

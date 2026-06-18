@@ -4,6 +4,10 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import "../Constants.h"
+
+@interface _TtC10TelegramUI18ChatControllerImpl : UIViewController
+- (void)viewDidAppear:(BOOL)animated;
+@end
 #import "../Logger/Logger.h"
 
 #pragma mark - Screenshot/Forward Protection Bypass

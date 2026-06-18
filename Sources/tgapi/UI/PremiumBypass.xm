@@ -4,6 +4,17 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import "../Constants.h"
+
+@interface _TtC10TelegramCore7Network : NSObject
+- (void)requestMessageServiceAuthorizationRequired:(id)req;
+@property (readonly) BOOL isPremium;
+@end
+
+@interface _TtC10SettingsUI22TranslateSettingsController : UIViewController
+@end
+
+@interface _TtC11TranslateUI18TranslateController : UIViewController
+@end
 #import "../Logger/Logger.h"
 
 // -- Layer 1: Network class premium spoof --
