@@ -37,8 +37,6 @@ static void patchMaximumNumberOfAccounts(void) {
         
         const struct mach_header *header32 = _dyld_get_image_header(i);
         const struct mach_header_64 *header = (const struct mach_header_64 *)header32;
-        intptr_t slide = _dyld_get_image_vmaddr_slide(i);
-        
         // Get __data section
         unsigned long dataSize = 0;
         uint8_t *dataSec = getsectiondata(header, "__DATA", "__data", &dataSize);
