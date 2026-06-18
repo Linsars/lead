@@ -6,4 +6,88 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - run: pip3 install capstone && echo "ready" && uname -a
+      - name: Setup Python + deps
+        run: |
+          python3 -m venv /tmp/venv
+          source /tmp/venv/bin/activate
+          pip3 install capstone
+          echo "REQS OK"
+
+      - name: Download IPA & extract
+        run: |
+          gh release download ipa-telegram-12.8 --repo ${{ github.repository }} --pattern 'Telegram.ipa' --dir /tmp
+          unzip -q /tmp/Telegram.ipa -d /tmp/ipa/
+          cp "$(find /tmp/ipa -name 'TelegramUIFramework.framework' -type d | head -1)/TelegramUIFramework" /tmp/TelegramUIFramework
+          ls -lh /tmp/TelegramUIFramework
+
+      - name: Symbol + Disassembly Analysis
+        run: |
+          source /tmp/venv/bin/activate
+          python3 << 'ANALYSIS'
+import struct
+with open("/tmp/TelegramUIFramework","rb") as f:
+    d=f.read()
+ncmds=struct.unpack("<I",d[16:20])[0]
+pos=32
+text_off=text_size=symoff=stroff=nsyms=0
+for _ in range(ncmds):
+    ct,cs=struct.unpack("<II",d[pos:pos+8])
+    if ct==0x2:
+        symoff,stroff,nsyms=struct.unpack("<III",d[pos+8:pos+20])
+    if ct==0x19 and d[pos+8:pos+24].split(b"\x00")[0].decode()=="__TEXT":
+        ns=struct.unpack("<I",d[pos+72:pos+76])[0]
+        sec=pos+80
+        for _ in range(ns):
+            sn=d[sec:sec+16].split(b"\x00")[0].decode()
+            if sn=="__text":
+                text_off=struct.unpack("<Q",d[sec+32:sec+40])[0]
+                text_size=struct.unpack("<Q",d[sec+40:sec+48])[0]
+            sec+=80
+    pos+=cs
+print(f"__text: 0x{text_off:x} size={text_size}")
+print(f"symtab: {nsyms} symbols")
+
+# Symbol search
+print("\n=== SYMBOL SEARCH ===")
+for s in range(nsyms):
+    nl=symoff+s*16
+    n_strx=struct.unpack("<I",d[nl:nl+4])[0]
+    n_value=struct.unpack("<Q",d[nl+8:nl+16])[0]
+    name=d[stroff+n_strx:].split(b"\x00")[0].decode(errors="replace")
+    lower=name.lower()
+    if "maximum" in lower and ("account" in lower or "premium" in lower):
+        print(f"  {name}: value=0x{n_value:x}")
+
+# Disassembly
+print("\n=== CMP #3/#4 ANALYSIS (first 10MB) ===")
+from capstone import *
+text=d[text_off:text_off+text_size]
+md=Cs(CS_ARCH_ARM64,CS_MODE_ARM)
+md.skipdata=True
+counts={"3":0,"4":0}
+for i in range(0,min(len(text),10*1024*1024),4096):
+    for insn in md.disasm(text[i:i+4096],text_off+i):
+        if insn.mnemonic=="cmp" and insn.operands[1].type==1:
+            imm=insn.operands[1].value.imm
+            if imm in (3,4):
+                counts[str(imm)]+=1
+                total=counts["3"]+counts["4"]
+                if total<=20:
+                    ctx=[]
+                    for pi in md.disasm(text[max(0,insn.address-text_off-20):insn.address-text_off],insn.address-20):
+                        ctx.append(f"{pi.mnemonic} {pi.op_str}")
+                    print(f"  0x{insn.address:x}: {' | '.join(ctx[-3:])} -> cmp {insn.op_str}")
+print(f"\nTotal: CMP #3={counts['3']} CMP #4={counts['4']}")
+
+# Output for use in patching
+print("\n=== NATIVE_ADDRESSES ===")
+# Compute native addresses from file offsets
+print(f"TEXT_FILEOFF={text_off}")
+ANALYSIS
+
+      - name: Upload analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: analysis
+          path: /tmp/analysis.txt
+          retention-days: 7
