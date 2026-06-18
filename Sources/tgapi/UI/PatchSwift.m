@@ -33,7 +33,10 @@ static void patchMaximumNumberOfAccounts(void) {
         const char *name = _dyld_get_image_name(i);
         if (!name || !strstr(name, "TelegramUIFramework")) continue;
         
-        const struct mach_header_64 *header = _dyld_get_image_header(i);
+        // Cast: _dyld_get_image_header returns struct mach_header * on arm64
+        // but the actual memory layout is mach_header_64
+        const struct mach_header *header32 = _dyld_get_image_header(i);
+        const struct mach_header_64 *header = (const struct mach_header_64 *)header32;
         if (!header) continue;
         
         intptr_t slide = _dyld_get_image_vmaddr_slide(i);
