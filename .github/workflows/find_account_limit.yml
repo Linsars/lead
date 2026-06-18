@@ -7,69 +7,66 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download IPA with token
+      - name: Download framework
         run: |
-          curl -sL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" \
-            "$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases" | \
-              python3 -c "import sys,json;r=json.load(sys.stdin);[print(a['url']) for a in r[1]['assets'] if 'Telegram.ipa' in a['name']]" | head -1)" \
-            -o /tmp/Telegram.ipa
+          gh release download ipa-telegram-12.8 --repo ${{ github.repository }} --pattern '*.ipa' --dir /tmp
+          test -f /tmp/Telegram.ipa && echo "OK" || (echo "FALLBACK: direct URL" && curl -sL -o /tmp/Telegram.ipa "https://github.com/${{ github.repository }}/releases/download/ipa-telegram-12.8/Telegram.ipa")
           ls -lh /tmp/Telegram.ipa
 
-      - name: Extract
+      - name: Extract + analyze
         run: |
           unzip -q /tmp/Telegram.ipa -d /tmp/ipa/
-          cp "$(find /tmp/ipa -name 'TelegramUIFramework.framework' -type d | head -1)/TelegramUIFramework" /tmp/TelegramUIFramework
-          ls -lh /tmp/TelegramUIFramework
-
-      - name: Symbol + CMP scan
-        run: |
-          python3 -c "
+          FW=$(find /tmp/ipa -name "TelegramUIFramework.framework" -type d | head -1)
+          cp "$FW/TelegramUIFramework" /tmp/TUIF
+          ls -lh /tmp/TUIF
+          
+          pip3 install capstone -q
+          python3 << 'PYANAL'
 import struct
-with open('/tmp/TelegramUIFramework','rb') as f:
+with open('/tmp/TUIF','rb') as f:
     d=f.read()
 ncmds=struct.unpack('<I',d[16:20])[0]
 pos=32
-text_off=text_size=symoff=stroff=nsyms=0
+txt_off=txt_sz=sym_off=str_off=n_sym=0
 for _ in range(ncmds):
     ct,cs=struct.unpack('<II',d[pos:pos+8])
     if ct==0x2:
-        symoff,stroff,nsyms=struct.unpack('<III',d[pos+8:pos+20])
+        sym_off,str_off,n_sym=struct.unpack('<III',d[pos+8:pos+20])
     if ct==0x19 and d[pos+8:pos+24].split(b'\x00')[0].decode()=='__TEXT':
         ns=struct.unpack('<I',d[pos+72:pos+76])[0]
         sec=pos+80
         for _ in range(ns):
             sn=d[sec:sec+16].split(b'\x00')[0].decode()
             if sn=='__text':
-                text_off=struct.unpack('<Q',d[sec+32:sec+40])[0]
-                text_size=struct.unpack('<Q',d[sec+40:sec+48])[0]
+                txt_off,txt_sz=struct.unpack('<QQ',d[sec+32:sec+48])
             sec+=80
     pos+=cs
-
-print(f'SYMBOLS: {nsyms} total')
-for s in range(nsyms):
-    nl=symoff+s*16
-    name=d[stroff+struct.unpack('<I',d[nl:nl+4])[0]:].split(b'\x00')[0].decode(errors='replace')
+print(f'__TEXT: 0x{txt_off:x} sz={txt_sz}')
+# Symbol scan
+print(f'% SYMBOLS % scanning {n_sym} entries')
+for s in range(n_sym):
+    nl=sym_off+s*16
+    n=str_off+struct.unpack('<I',d[nl:nl+4])[0]
+    if n+4>=len(d): continue
+    name=d[n:].split(b'\x00')[0].decode(errors='replace')
     if 'NumberOf' in name:
         val=struct.unpack('<Q',d[nl+8:nl+16])[0]
-        print(f'  SYM: {name} = 0x{val:x}')
-
-print(f'__text: 0x{text_off:x} size={text_size}')
-# Install capstone
-import subprocess
-subprocess.run(['pip3','install','capstone'],capture_output=True)
+        print(f'% SYM {name}: 0x{val:x}')
+# Capstone scan
 from capstone import *
-text=d[text_off:text_off+min(text_size,512000)]
+text=d[txt_off:txt_off+min(txt_sz,1048576)]
 md=Cs(CS_ARCH_ARM64,CS_MODE_ARM)
 md.skipdata=True
-for insn in md.disasm(text[:min(len(text),8192)],text_off):
+count=0
+for insn in md.disasm(text,txt_off):
     if insn.mnemonic=='cmp' and insn.operands[1].type==1 and insn.operands[1].value.imm in(3,4):
-        print(f'  0x{insn.address:x}: cmp {insn.op_str}')
-" 2>&1
+        print(f'% CMP 0x{insn.address:x}: cmp {insn.op_str}')
+        count+=1
+        if count>20: break
+PYANAL
 
-      - name: Upload analysis
-        uses: actions/upload-artifact@v4
-        with:
-          name: analysis
-          path: /tmp/*.txt
+      - name: Show output
+        run: |
+          echo "=== Full Output ==="
+          grep -E '^% ' /tmp/analysis_output.txt 2>/dev/null || true
+          find /tmp -name "analysis_output*" -exec cat {} \; 2>/dev/null || echo "no output file"
