@@ -5,4 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: echo "READY" && ls .github/workflows/analyze.py
+      - run: echo "START"
+      - name: Download
+        run: curl -sL -o /tmp/tf.zip "https://github.com/Linsars/lead/releases/download/ipa-telegram-12.8/Telegram.ipa"
+      - run: ls -lh /tmp/tf.zip
