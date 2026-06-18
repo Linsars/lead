@@ -5,14 +5,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: echo "START"
-      - name: Download IPA
-        run: curl -sL -o /tmp/tf.zip "https://github.com/Linsars/lead/releases/download/ipa-telegram-12.8/Telegram.ipa"
-      - name: Extract framework
-        run: |
-          unzip -q /tmp/tf.zip -d /tmp/ipa
-          find /tmp/ipa -name "TelegramUIFramework" -type f | head -1
-          cp "$(find /tmp/ipa -name "TelegramUIFramework" -type f | head -1)" /tmp/tf
+      - run: curl -sL -o /tmp/tf.zip "https://github.com/Linsars/lead/releases/download/ipa-telegram-12.8/Telegram.ipa" && ls -lh /tmp/tf.zip
+      - run: unzip -l /tmp/tf.zip | head -20
+      - run: |
+          FILE=$(python3 -c "
+import zipfile
+with zipfile.ZipFile('/tmp/tf.zip') as z:
+    for n in z.namelist():
+        if 'TelegramUIFramework' in n and n.endswith('TelegramUIFramework'):
+            print(n)
+            break
+")
+          echo "Framework: $FILE"
+          python3 -c "
+import zipfile
+with zipfile.ZipFile('/tmp/tf.zip') as z:
+    with open('/tmp/tf','wb') as f:
+        f.write(z.read('$FILE'))
+"
           ls -lh /tmp/tf
-      - name: Symbol search
-        run: python3 ${{ github.workspace }}/.github/workflows/analyze.py
+      - run: python3 ${{ github.workspace }}/.github/workflows/analyze.py
