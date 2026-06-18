@@ -53,7 +53,7 @@ static void patchMaximumNumberOfAccounts(void) {
                 struct segment_command_64 *seg = (struct segment_command_64 *)pos;
                 if (strcmp(seg->segname, "__LINKEDIT") == 0) {
                     linkedit_off = seg->vmaddr;
-                    linkedit_size = seg->vmsize;
+                    
                     linkedit_fileoff = seg->fileoff;
                 }
             } else if (cmd_type == 0x2) { // LC_SYMTAB
@@ -61,7 +61,7 @@ static void patchMaximumNumberOfAccounts(void) {
                 symoff = sym->symoff;
                 stroff = sym->stroff;
                 nsyms = sym->nsyms;
-                strsize = sym->strsize;
+                
                 patchLog(@"[PatchSwift] SYMTAB: nsyms=%u", nsyms);
             }
             pos += cmd_size;
