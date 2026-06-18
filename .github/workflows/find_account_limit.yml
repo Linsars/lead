@@ -1,8 +1,45 @@
 name: Find Account Limit
 on: [workflow_dispatch]
+
 jobs:
-  test:
+  analyze:
     runs-on: macos-15
     steps:
-      - run: python3 -c "print('hello from macos')"
-      - run: sw_vers
+      - uses: actions/checkout@v4
+
+      - name: Download IPA & extract
+        run: |
+          gh release download ipa-telegram-12.8 --repo ${{ github.repository }} --pattern 'Telegram.ipa' --dir /tmp
+          ls -lh /tmp/Telegram.ipa
+
+      - name: Extract framework
+        if: success()
+        run: |
+          unzip -q /tmp/Telegram.ipa -d /tmp/ipa/
+          FRAMEWORK=$(find /tmp/ipa -name "TelegramUIFramework.framework" -type d | head -1)
+          cp "$FRAMEWORK/TelegramUIFramework" /tmp/TelegramUIFramework
+          ls -lh /tmp/TelegramUIFramework
+
+      - name: Symbol scan for maximumNumberOfAccounts
+        if: success()
+        run: |
+          python3 -c "
+import struct
+with open('/tmp/TelegramUIFramework','rb') as f:
+    d=f.read()
+ncmds=struct.unpack('<I',d[16:20])[0]
+pos=32
+symoff=stroff=nsyms=0
+for _ in range(ncmds):
+    ct,cs=struct.unpack('<II',d[pos:pos+8])
+    if ct==0x2:
+        symoff,stroff,nsyms=struct.unpack('<III',d[pos+8:pos+20])
+    pos+=cs
+print(f'nsyms={nsyms}')
+for s in range(min(nsyms,50000)):
+    nl=symoff+s*16
+    name=d[stroff+struct.unpack('<I',d[nl:nl+4])[0]:].split(b'\x00')[0].decode(errors='replace')
+    if 'umberOf' in name:
+        val=struct.unpack('<Q',d[nl+8:nl+16])[0]
+        print(f'  {name}: value=0x{val:x}')
+"
